@@ -4,6 +4,7 @@ import { Camera, X, Check, Plus, Trash2, Keyboard, Sparkles } from 'lucide-react
 import { processReceiptWithOCR } from '../services/ocr';
 import { Receipt, ProductItem } from '../types';
 import { translations, Language } from '../translations';
+import { generateId } from '../services/utils';
 
 interface ScannerProps {
   onSave: (receipt: Receipt) => void;
@@ -30,7 +31,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
       const data = await processReceiptWithOCR(blob);
 
       setParsedData({
-        id: crypto.randomUUID(),
+        id: generateId(),
         createdAt: Date.now(),
         items: data.items,
         storeName: data.storeName,
@@ -48,12 +49,12 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
 
   const handleManualEntry = () => {
     setParsedData({
-      id: crypto.randomUUID(),
+      id: generateId(),
       createdAt: Date.now(),
       storeName: '',
       date: new Date().toISOString().split('T')[0],
       totalAmount: 0,
-      items: [{ id: crypto.randomUUID(), name: '', price: 0, quantity: 1 }]
+      items: [{ id: generateId(), name: '', price: 0, quantity: 1 }]
     });
     setStep('review');
     setPreviewUrl(null);
@@ -91,7 +92,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
   const addItem = () => {
     if (!parsedData) return;
     const newItem: ProductItem = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: '',
       price: 0,
       quantity: 1

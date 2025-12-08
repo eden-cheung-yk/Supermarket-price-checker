@@ -6,6 +6,7 @@ import { getItemHistory } from '../services/db';
 import { PriceHistoryPoint, OnlinePrice } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { translations, Language } from '../translations';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
 interface PriceCheckProps {
   lang: Language;
@@ -69,13 +70,15 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
     if (!term) return;
     setLoading(true);
     setStatus(t.scanning);
+    setOnlinePrices([]);
+    setLocalHistory([]);
     
     try {
         // 1. Search Local DB
         const history = await getItemHistory(term);
         setLocalHistory(history);
 
-        // 2. Search Online (Canada)
+        // 2. Get Online Search Links
         const online = await findOnlinePrices(term);
         setOnlinePrices(online);
     } catch (e) {
@@ -164,7 +167,7 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
                 </div>
             )}
 
-            {/* 2. Online Comparison */}
+            {/* 2. Online Comparison Links */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                     <ExternalLink size={18} className="text-green-500" /> {t.online}
@@ -172,15 +175,22 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
                 {onlinePrices.length > 0 ? (
                     <div className="space-y-3">
                         {onlinePrices.map((item, idx) => (
-                            <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                            <a 
+                                key={idx} 
+                                href={item.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-transparent hover:border-gray-200"
+                            >
                                 <div>
                                     <div className="font-bold text-gray-800">{item.store}</div>
-                                    <div className="text-xs text-gray-500 truncate w-48">{item.productName}</div>
+                                    <div className="text-xs text-gray-500">{item.productName}</div>
                                 </div>
-                                <div className="text-right">
-                                    <div className="font-bold text-primary text-lg">{item.price}</div>
+                                <div className="text-right flex items-center gap-1 text-primary">
+                                    <span className="font-bold text-sm">{item.price}</span>
+                                    <ExternalLink size={14} />
                                 </div>
-                            </div>
+                            </a>
                         ))}
                     </div>
                 ) : (

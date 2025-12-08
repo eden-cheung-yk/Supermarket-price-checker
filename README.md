@@ -1,3 +1,4 @@
+
 # SmartPrice Tracker - NAS Deployment Guide
 
 This guide explains how to host this application on your own NAS using GitHub and Docker.
@@ -7,7 +8,6 @@ This guide explains how to host this application on your own NAS using GitHub an
 2.  **NAS / Server**: Must have **Docker** and **Git** installed.
     *   *Synology*: Install "Container Manager" (Docker) and "Git Server".
     *   *Linux Server*: Run `sudo apt install docker.io docker-compose git`.
-3.  **Gemini API Key** (Optional): Only needed if you use the Barcode Scanner "Identify Product" feature.
 
 ---
 
@@ -42,18 +42,7 @@ This guide explains how to host this application on your own NAS using GitHub an
     # Download your code
     git clone https://github.com/<YOUR_USERNAME>/smartprice.git .
     ```
-3.  **Create Environment File**:
-    You need to set your API Key.
-    ```bash
-    nano .env
-    ```
-    Paste the following inside:
-    ```env
-    API_KEY=your_actual_gemini_api_key_here
-    ```
-    *Press `Ctrl+O` to save, `Enter` to confirm, `Ctrl+X` to exit.*
-
-4.  **Start the App**:
+3.  **Start the App**:
     ```bash
     # This builds the app from source and starts it
     sudo docker-compose up -d --build

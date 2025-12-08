@@ -1,6 +1,7 @@
 
 import Tesseract from 'tesseract.js';
 import { ProductItem } from '../types';
+import { generateId } from './utils';
 
 interface ParsedReceipt {
   storeName: string;
@@ -26,8 +27,6 @@ const extractDate = (lines: string[]): string => {
   for (const line of lines) {
     const match = line.match(dateRegex);
     if (match) {
-      // Basic normalization could go here, but returning raw match for now
-      // Ideally convert to YYYY-MM-DD
       return match[0]; 
     }
   }
@@ -52,9 +51,6 @@ const extractTotal = (lines: string[]): number => {
     }
   }
   
-  // Fallback: Find the largest number that looks like a price? 
-  // Dangerous, might pick up card number. 
-  // Let's just return 0 if explicit "Total" keyword not found to be safe.
   return 0;
 };
 
@@ -70,7 +66,7 @@ const extractStore = (lines: string[]): string => {
  * Main OCR Function
  */
 export const processReceiptWithOCR = async (imageBlob: Blob): Promise<ParsedReceipt> => {
-  const worker = await Tesseract.createWorker('eng'); // English covers most text
+  const worker = await Tesseract.createWorker('eng'); 
   
   const result = await worker.recognize(imageBlob);
   await worker.terminate();
@@ -78,27 +74,22 @@ export const processReceiptWithOCR = async (imageBlob: Blob): Promise<ParsedRece
   const rawText = result.data.text;
   const lines = cleanText(rawText);
 
-  // Parse fields
   const storeName = extractStore(lines);
   const date = extractDate(lines);
   const total = extractTotal(lines);
 
-  // Parsing items from raw OCR text is extremely difficult without AI.
-  // We will return an empty list and let the user add them, 
-  // OR we can try to add all lines that look like "Text ... Price"
   const items: ProductItem[] = [];
   
   // Very basic item parser: Look for lines ending in a number
   const itemRegex = /(.+)\s+(\d+\.\d{2})[A-Za-z]*$/;
   
   lines.forEach(line => {
-    // Skip lines that look like dates or totals
     if (line.match(/total|subtotal|balance|date|time/i)) return;
     
     const match = line.match(itemRegex);
     if (match) {
         items.push({
-            id: crypto.randomUUID(),
+            id: generateId(),
             name: match[1].trim(),
             price: parseFloat(match[2]),
             quantity: 1
@@ -110,7 +101,7 @@ export const processReceiptWithOCR = async (imageBlob: Blob): Promise<ParsedRece
     storeName,
     date,
     total,
-    items: items.length > 0 ? items : [{ id: crypto.randomUUID(), name: "Parsed Item 1", price: 0, quantity: 1 }],
+    items: items.length > 0 ? items : [{ id: generateId(), name: "Parsed Item 1", price: 0, quantity: 1 }],
     rawText
   };
 };

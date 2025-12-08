@@ -1,7 +1,11 @@
+
 import express from 'express';
-import pg from 'pg';
+import pkg from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+// Extract Pool from the default export or named export
+const { Pool } = pkg;
 
 // Setup for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -11,8 +15,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Database Configuration (PostgreSQL)
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/smartprice',
+// On Docker, this uses the Service Name 'db' as the hostname.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://smartprice:securepassword@db:5432/smartprice',
 });
 
 // Middleware
@@ -22,8 +27,9 @@ app.use(express.static(path.join(__dirname, 'dist')));
 // Initialize Database Table
 const initDB = async () => {
   try {
-    // We use a JSONB column 'content' to store the flexible receipt structure.
-    // This is perfect for "document" style storage like receipts.
+    // Wait for DB to be ready in Docker environment
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
     await pool.query(`
       CREATE TABLE IF NOT EXISTS receipts (
         id VARCHAR(255) PRIMARY KEY,
@@ -85,6 +91,7 @@ app.delete('/api/receipts/:id', async (req, res) => {
 });
 
 // --- Serve React Frontend ---
+// Fallback to index.html for React Router
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });

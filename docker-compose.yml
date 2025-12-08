@@ -1,12 +1,10 @@
+
 version: '3.8'
 
 services:
   app:
     build:
       context: .
-      args:
-        # Passes the key to the build process
-        - API_KEY=${API_KEY}
     restart: always
     ports:
       - "8080:3000"
