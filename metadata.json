@@ -1,0 +1,7 @@
+{
+  "name": "SmartPrice - Grocery Tracker",
+  "description": "A smart grocery price tracker with OCR receipt scanning and historical price analysis.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
