@@ -1,6 +1,6 @@
 {
-  "name": "SmartPrice - Grocery Tracker",
-  "description": "A smart grocery price tracker with OCR receipt scanning and historical price analysis.",
+  "name": "SmartPrice - Self-Hosted Grocery Tracker",
+  "description": "A privacy-focused, self-hosted grocery price tracker for Canada. Features offline OCR scanning, barcode price checking, historical price trends, and local flyer shortcuts. No external AI API keys required.",
   "requestFramePermissions": [
     "camera"
   ]
