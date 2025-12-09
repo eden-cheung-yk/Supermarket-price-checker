@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Barcode, Search, ShoppingCart, ExternalLink, Loader2, X } from 'lucide-react';
+import { Barcode, Search, ShoppingCart, ExternalLink, Loader2, X, ScanLine } from 'lucide-react';
 import { identifyProductFromBarcode, findOnlinePrices } from '../services/gemini';
 import { getItemHistory } from '../services/db';
 import { PriceHistoryPoint, OnlinePrice } from '../types';
@@ -25,44 +25,50 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
   // Handle Barcode Scanning
   useEffect(() => {
     if (mode === 'scan') {
-      // Small delay to ensure DOM element exists
+      // Small delay to ensure DOM element exists before mounting scanner
       const timer = setTimeout(() => {
+        // Prevent double mounting
+        if (scannerRef.current) return;
+
         const onScanSuccess = async (decodedText: string) => {
-          // Stop scanning once found
+          // Stop scanning immediately upon success
           if (scannerRef.current) {
               try {
                   await scannerRef.current.clear();
-              } catch (e) { console.error("Failed to clear scanner", e); }
+                  scannerRef.current = null;
+              } catch (e) { console.warn("Failed to clear scanner", e); }
           }
           
-          setStatus(`${decodedText}...`);
+          setStatus(`${t.scanning} ${decodedText}...`);
           setLoading(true);
           
           try {
+            // Identify product using OpenFoodFacts
             const productName = await identifyProductFromBarcode(decodedText);
             setSearchTerm(productName);
-            setMode('search'); // Switch back to search view to show results
+            setMode('search'); // Switch UI back to results view
+            
+            // Automatically trigger price check
             handleSearch(productName);
           } catch (error) {
             setStatus('Error identifying product.');
             setLoading(false);
+            setMode('search');
           }
         };
 
-        const scanner = new Html5QrcodeScanner(
-          "reader",
-          { 
+        const config = { 
             fps: 10, 
             qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0
-          },
-          false
-        );
-        
+            aspectRatio: 1.0,
+            showTorchButtonIfSupported: true
+        };
+
+        const scanner = new Html5QrcodeScanner("reader", config, false);
         scannerRef.current = scanner;
 
-        scanner.render(onScanSuccess, (err: any) => {
-            // ignore errors during scanning as it polls continuously
+        scanner.render(onScanSuccess, (errorMessage: any) => {
+            // parse errors are common in video streams, ignore them to keep console clean
         });
       }, 100);
 
@@ -70,7 +76,8 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
         clearTimeout(timer);
         if (scannerRef.current) {
             try { 
-              scannerRef.current.clear().catch(err => console.warn("Scanner clear error", err)); 
+              scannerRef.current.clear().catch(err => console.warn("Scanner cleanup error", err)); 
+              scannerRef.current = null;
             } catch(e) {}
         }
       };
@@ -85,11 +92,11 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
     setLocalHistory([]);
     
     try {
-        // 1. Search Local DB
+        // 1. Search Local DB (Privacy first)
         const history = await getItemHistory(term);
         setLocalHistory(history);
 
-        // 2. Get Online Search Links
+        // 2. Get Online Search Links (Open Web)
         const online = await findOnlinePrices(term);
         setOnlinePrices(online);
     } catch (e) {
@@ -108,14 +115,14 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
         <p className="text-gray-500">{t.desc}</p>
       </header>
 
-      {/* Search Input */}
+      {/* Search Input Bar */}
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input 
             type="text" 
             placeholder={t.placeholder}
-            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-primary focus:ring-2 focus:ring-green-100 outline-none transition-all"
+            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-primary focus:ring-2 focus:ring-green-100 outline-none transition-all shadow-sm"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchTerm)}
@@ -123,75 +130,93 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
         </div>
         <button 
             onClick={() => setMode(mode === 'scan' ? 'search' : 'scan')}
-            className={`p-3 rounded-xl border transition-colors ${mode === 'scan' ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200'}`}
+            className={`p-3 rounded-xl border transition-all shadow-sm flex-shrink-0 ${mode === 'scan' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:border-primary hover:text-primary'}`}
             title={mode === 'scan' ? "Close Scanner" : "Scan Barcode"}
         >
-            <Barcode size={24} />
+            {mode === 'scan' ? <X size={24} /> : <Barcode size={24} />}
         </button>
       </div>
 
-      {/* Button logic */}
+      {/* Manual Search Button */}
       {mode === 'search' && (
           <button 
             onClick={() => handleSearch(searchTerm)}
             disabled={!searchTerm || loading}
-            className="w-full bg-primary text-white font-bold py-3 rounded-xl shadow-md active:scale-95 transition-transform disabled:opacity-50"
+            className="w-full bg-primary hover:bg-green-600 text-white font-bold py-3 rounded-xl shadow-md active:scale-95 transition-transform disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2"
           >
-            {loading ? <span className="flex items-center justify-center gap-2"><Loader2 className="animate-spin" /> {t.scanning}</span> : t.checkBtn}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
+            {loading ? t.scanning : t.checkBtn}
           </button>
       )}
 
-      {/* Scanner View */}
+      {/* Scanner View UI */}
       {mode === 'scan' && (
-          <div className="bg-black rounded-xl overflow-hidden relative shadow-lg">
-              <button 
-                onClick={() => setMode('search')}
-                className="absolute top-2 right-2 z-10 p-2 bg-black/50 text-white rounded-full hover:bg-black/70"
-              >
-                <X size={20} />
-              </button>
-              <div id="reader" className="w-full min-h-[300px] bg-black"></div>
-              <div className="bg-gray-900 text-white p-4 text-center">
-                <p className="font-medium mb-1">{t.barcodeInstruction}</p>
-                <p className="text-xs text-gray-400">Ensure good lighting and hold steady.</p>
+          <div className="relative animate-fadeIn">
+              <div className="bg-black rounded-2xl overflow-hidden shadow-2xl border-4 border-gray-800">
+                  <div id="reader" className="w-full min-h-[350px] bg-black"></div>
+                  
+                  {/* Scanner Overlay UI */}
+                  <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent text-white z-10">
+                      <div className="flex items-center gap-2 justify-center">
+                          <ScanLine className="animate-pulse text-green-400" />
+                          <span className="font-bold tracking-wide">SCANNER ACTIVE</span>
+                      </div>
+                  </div>
+
+                  <div className="bg-gray-900 text-white p-6 text-center border-t border-gray-800">
+                    <p className="font-bold text-lg mb-2 text-green-400">{t.barcodeInstruction}</p>
+                    <p className="text-sm text-gray-400 max-w-xs mx-auto">
+                        Align the barcode within the box. Ensure the room is well lit.
+                    </p>
+                  </div>
               </div>
           </div>
       )}
 
       {/* Status Message */}
-      {status && <div className="text-sm text-center text-gray-500 animate-pulse font-medium">{status}</div>}
+      {status && !mode.includes('scan') && (
+        <div className="text-sm text-center text-gray-500 animate-pulse font-medium bg-gray-50 py-2 rounded-lg">
+            {status}
+        </div>
+      )}
 
-      {/* RESULTS */}
+      {/* RESULTS DISPLAY */}
       {!loading && mode === 'search' && (localHistory.length > 0 || onlinePrices.length > 0) && (
         <div className="space-y-6 animate-fadeIn">
             
             {/* 1. Local History Chart */}
             {localHistory.length > 0 && (
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                     <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                        <ShoppingCart size={18} className="text-blue-500" /> {t.history}
+                        <ShoppingCart size={20} className="text-blue-500" /> {t.history}
                     </h3>
-                    <div className="h-48">
+                    <div className="h-56">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={localHistory.slice(0, 6).reverse()}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="date" fontSize={10} />
-                                <YAxis domain={['auto', 'auto']} fontSize={10} width={30} />
-                                <Tooltip />
-                                <Bar dataKey="price" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Price ($)" />
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                <XAxis dataKey="date" fontSize={11} tickMargin={5} stroke="#9ca3af" />
+                                <YAxis domain={['auto', 'auto']} fontSize={11} width={30} stroke="#9ca3af" />
+                                <Tooltip 
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                                    cursor={{ fill: '#f3f4f6' }}
+                                />
+                                <Bar dataKey="price" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Price ($)" barSize={32} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
-                    <div className="mt-3 text-sm text-gray-500">
-                        Last paid: <span className="font-bold text-gray-900">${localHistory[0].price}</span> at {localHistory[0].store}
+                    <div className="mt-4 pt-3 border-t border-gray-50 text-sm text-gray-600 flex justify-between items-center">
+                        <span>Last paid:</span>
+                        <span className="font-bold text-gray-900 bg-blue-50 px-2 py-1 rounded text-base">
+                            ${localHistory[0].price.toFixed(2)}
+                        </span>
                     </div>
                 </div>
             )}
 
             {/* 2. Online Comparison Links */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <ExternalLink size={18} className="text-green-500" /> {t.online}
+                    <ExternalLink size={20} className="text-green-500" /> {t.online}
                 </h3>
                 {onlinePrices.length > 0 ? (
                     <div className="space-y-3">
@@ -201,21 +226,21 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
                                 href={item.url} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-transparent hover:border-gray-200"
+                                className="group flex justify-between items-center p-3 bg-gray-50 rounded-xl hover:bg-white hover:shadow-md hover:border-green-100 border border-transparent transition-all"
                             >
                                 <div>
-                                    <div className="font-bold text-gray-800">{item.store}</div>
+                                    <div className="font-bold text-gray-800 group-hover:text-primary transition-colors">{item.store}</div>
                                     <div className="text-xs text-gray-500">{item.productName}</div>
                                 </div>
-                                <div className="text-right flex items-center gap-1 text-primary">
-                                    <span className="font-bold text-sm">{item.price}</span>
+                                <div className="text-right flex items-center gap-2 text-primary font-medium bg-white px-3 py-1 rounded-lg border border-gray-100 group-hover:border-green-200">
+                                    <span className="text-sm">{item.price}</span>
                                     <ExternalLink size={14} />
                                 </div>
                             </a>
                         ))}
                     </div>
                 ) : (
-                    <div className="text-center text-gray-400 py-4">
+                    <div className="text-center text-gray-400 py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200">
                         {t.noResults}
                     </div>
                 )}
