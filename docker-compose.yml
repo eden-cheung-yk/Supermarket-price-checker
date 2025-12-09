@@ -8,8 +8,8 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Map the local 'data' folder to the container's data folder
-      # This ensures smartprice.db persists on your NAS
+      # This maps the internal /app/data folder to a folder named 'data' on your NAS
+      # This is where the SQLite database will be saved.
       - ./data:/app/data
     environment:
       - PORT=3000
