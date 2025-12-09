@@ -2,6 +2,7 @@ import express from 'express';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 // Setup for ES Modules path resolution
@@ -10,7 +11,8 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DB_FILE = process.env.DB_FILE || 'smartprice.db';
+// Default to a 'data' folder for Docker volume compatibility
+const DB_FILE = process.env.DB_FILE || 'data/smartprice.db';
 
 // Middleware
 app.use(express.json({ limit: '50mb' }));
@@ -21,13 +23,21 @@ let db;
 
 const initDB = async () => {
   try {
+    const dbPath = path.resolve(__dirname, DB_FILE);
+    const dbDir = path.dirname(dbPath);
+
+    // Ensure the data directory exists (crucial for Docker volumes)
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+      console.log(`📂 Created data directory: ${dbDir}`);
+    }
+
     db = await open({
-      filename: path.join(__dirname, DB_FILE),
+      filename: dbPath,
       driver: sqlite3.Database
     });
 
     // Create Table for Receipts
-    // We use a JSON column (text) to store the complex receipt structure
     await db.exec(`
       CREATE TABLE IF NOT EXISTS receipts (
         id TEXT PRIMARY KEY,
@@ -39,7 +49,7 @@ const initDB = async () => {
       )
     `);
 
-    console.log(`✅ Connected to SQLite database: ${DB_FILE}`);
+    console.log(`✅ Connected to SQLite database: ${dbPath}`);
   } catch (err) {
     console.error('❌ Failed to initialize database:', err);
   }
@@ -119,7 +129,7 @@ app.listen(PORT, () => {
   🚀 SmartPrice Server running!
   ---------------------------
   Local:   http://localhost:${PORT}
-  Network: http://<YOUR_NAS_IP>:${PORT}
+  Database: ${DB_FILE}
   ---------------------------
   `);
 });

@@ -1,6 +1,5 @@
-
-import React, { useState, useEffect } from 'react';
-import { Barcode, Search, ShoppingCart, ExternalLink, Loader2, Tag } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Barcode, Search, ShoppingCart, ExternalLink, Loader2, X } from 'lucide-react';
 import { identifyProductFromBarcode, findOnlinePrices } from '../services/gemini';
 import { getItemHistory } from '../services/db';
 import { PriceHistoryPoint, OnlinePrice } from '../types';
@@ -20,50 +19,62 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
   const [localHistory, setLocalHistory] = useState<PriceHistoryPoint[]>([]);
   const [onlinePrices, setOnlinePrices] = useState<OnlinePrice[]>([]);
   const [status, setStatus] = useState('');
+  
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
   // Handle Barcode Scanning
   useEffect(() => {
-    let html5QrcodeScanner: any;
-
     if (mode === 'scan') {
-      const onScanSuccess = async (decodedText: string, decodedResult: any) => {
-        // Stop scanning once found
-        if (html5QrcodeScanner) {
-            try {
-                await html5QrcodeScanner.clear();
-            } catch (e) { console.error(e); }
-        }
+      // Small delay to ensure DOM element exists
+      const timer = setTimeout(() => {
+        const onScanSuccess = async (decodedText: string) => {
+          // Stop scanning once found
+          if (scannerRef.current) {
+              try {
+                  await scannerRef.current.clear();
+              } catch (e) { console.error("Failed to clear scanner", e); }
+          }
+          
+          setStatus(`${decodedText}...`);
+          setLoading(true);
+          
+          try {
+            const productName = await identifyProductFromBarcode(decodedText);
+            setSearchTerm(productName);
+            setMode('search'); // Switch back to search view to show results
+            handleSearch(productName);
+          } catch (error) {
+            setStatus('Error identifying product.');
+            setLoading(false);
+          }
+        };
+
+        const scanner = new Html5QrcodeScanner(
+          "reader",
+          { 
+            fps: 10, 
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1.0
+          },
+          false
+        );
         
-        setStatus(`${decodedText}...`);
-        setLoading(true);
-        
-        try {
-          const productName = await identifyProductFromBarcode(decodedText);
-          setSearchTerm(productName);
-          setMode('search'); // Switch back to search view to show results
-          handleSearch(productName);
-        } catch (error) {
-          setStatus('Error identifying product.');
-          setLoading(false);
+        scannerRef.current = scanner;
+
+        scanner.render(onScanSuccess, (err: any) => {
+            // ignore errors during scanning as it polls continuously
+        });
+      }, 100);
+
+      return () => {
+        clearTimeout(timer);
+        if (scannerRef.current) {
+            try { 
+              scannerRef.current.clear().catch(err => console.warn("Scanner clear error", err)); 
+            } catch(e) {}
         }
       };
-
-      // @ts-ignore
-      html5QrcodeScanner = new Html5QrcodeScanner(
-        "reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        /* verbose= */ false
-      );
-      html5QrcodeScanner.render(onScanSuccess, (err: any) => {
-          // ignore errors during scanning
-      });
     }
-
-    return () => {
-      if (html5QrcodeScanner) {
-          try { html5QrcodeScanner.clear(); } catch(e) {}
-      }
-    };
   }, [mode]);
 
   const handleSearch = async (term: string) => {
@@ -113,6 +124,7 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
         <button 
             onClick={() => setMode(mode === 'scan' ? 'search' : 'scan')}
             className={`p-3 rounded-xl border transition-colors ${mode === 'scan' ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200'}`}
+            title={mode === 'scan' ? "Close Scanner" : "Scan Barcode"}
         >
             <Barcode size={24} />
         </button>
@@ -131,14 +143,23 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
 
       {/* Scanner View */}
       {mode === 'scan' && (
-          <div className="bg-black rounded-xl overflow-hidden relative">
-              <div id="reader" className="w-full h-64"></div>
-              <p className="text-center text-white py-2 text-sm">{t.barcodeInstruction}</p>
+          <div className="bg-black rounded-xl overflow-hidden relative shadow-lg">
+              <button 
+                onClick={() => setMode('search')}
+                className="absolute top-2 right-2 z-10 p-2 bg-black/50 text-white rounded-full hover:bg-black/70"
+              >
+                <X size={20} />
+              </button>
+              <div id="reader" className="w-full min-h-[300px] bg-black"></div>
+              <div className="bg-gray-900 text-white p-4 text-center">
+                <p className="font-medium mb-1">{t.barcodeInstruction}</p>
+                <p className="text-xs text-gray-400">Ensure good lighting and hold steady.</p>
+              </div>
           </div>
       )}
 
       {/* Status Message */}
-      {status && <div className="text-sm text-center text-gray-500 animate-pulse">{status}</div>}
+      {status && <div className="text-sm text-center text-gray-500 animate-pulse font-medium">{status}</div>}
 
       {/* RESULTS */}
       {!loading && mode === 'search' && (localHistory.length > 0 || onlinePrices.length > 0) && (

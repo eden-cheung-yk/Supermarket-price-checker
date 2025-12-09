@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  smartprice:
+    container_name: smartprice-tracker
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Map the local 'data' folder to the container's data folder
+      # This ensures smartprice.db persists on your NAS
+      - ./data:/app/data
+    environment:
+      - PORT=3000
+      - DB_FILE=data/smartprice.db
+      - NODE_ENV=production
