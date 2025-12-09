@@ -1,20 +1,22 @@
-
 version: '3.8'
 
 services:
+  # The Web Application
   app:
-    build:
-      context: .
+    container_name: smartprice-app
+    build: .
     restart: always
     ports:
-      - "8080:3000"
+      - "8080:3000" # Access via http://NAS_IP:8080
     environment:
       - DATABASE_URL=postgresql://smartprice:securepassword@db:5432/smartprice
       - PORT=3000
     depends_on:
       - db
 
+  # The Database (PostgreSQL)
   db:
+    container_name: smartprice-db
     image: postgres:15-alpine
     restart: always
     environment:
@@ -24,5 +26,6 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+# Persistent storage for the database
 volumes:
   pgdata:
