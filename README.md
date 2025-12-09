@@ -116,9 +116,23 @@ You need to run the `docker-compose` command. You can do this via SSH or Task Sc
 
 ---
 
-### Phase 4: Access the App
-Open your browser and go to:
-`http://<YOUR-NAS-IP>:3000`
+## 🔄 How to Update (Method 1)
+
+If you download a new version of the code from GitHub in the future, follow these steps to update your NAS without losing data.
+
+1.  **Download New Code:** Download the updated files to your computer.
+2.  **Stop the App:**
+    *   Via SSH: `cd /volume1/docker/smartprice && sudo docker-compose down`
+    *   *OR* Via Synology Container Manager: Stop the `smartprice` container.
+3.  **Upload & Overwrite:**
+    *   Open Synology File Station.
+    *   Drag the new code files into `/docker/smartprice`.
+    *   **IMPORTANT:** Select **"Overwrite"** or **"Replace"**.
+    *   **CRITICAL:** Do **NOT** delete or overwrite the `data` folder. That is where your database lives. Just overwrite the `.tsx`, `.js`, `.json` and `.yml` files.
+4.  **Rebuild:**
+    *   Run the same command as Phase 3 (SSH or Task Scheduler):
+    *   `sudo docker-compose up -d --build`
+    *   This forces Docker to re-compile the app with the new code.
 
 ---
 
