@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, X, Check, Plus, Trash2, Keyboard, Sparkles } from 'lucide-react';
 import { processReceiptWithOCR } from '../services/ocr';
@@ -9,9 +10,10 @@ interface ScannerProps {
   onSave: (receipt: Receipt) => void;
   onCancel: () => void;
   lang: Language;
+  categories: string[];
 }
 
-export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
+export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang, categories }) => {
   const t = translations[lang].scanner;
   const [step, setStep] = useState<'capture' | 'processing' | 'review'>('capture');
   const [statusMessage, setStatusMessage] = useState('');
@@ -177,49 +179,67 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
             
             <div className="space-y-3">
               {parsedData.items?.map((item, idx) => (
-                <div key={item.id} className="flex gap-2 items-center animate-fadeIn group">
-                   <input 
-                    placeholder="Item name"
-                    className="flex-1 bg-gray-50 border border-transparent focus:bg-white focus:border-primary rounded px-3 py-2 outline-none transition-all text-sm"
-                    value={item.name}
-                    onChange={(e) => updateItem(idx, 'name', e.target.value)}
-                  />
-                  
-                  {/* Quantity Input */}
-                  <div className="relative w-16 flex-shrink-0">
-                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">x</span>
-                     <input 
-                      type="number"
-                      min="1"
-                      placeholder="1"
-                      className="w-full bg-gray-50 border border-transparent focus:bg-white focus:border-primary rounded pl-5 pr-1 py-2 text-center outline-none transition-all text-sm"
-                      value={item.quantity || 1}
-                      onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          updateItem(idx, 'quantity', isNaN(val) ? 1 : val);
-                      }}
-                    />
-                  </div>
+                <div key={item.id} className="flex flex-col gap-2 p-2 bg-gray-50 rounded-lg animate-fadeIn group">
+                   
+                   {/* Row 1: Name & Trash */}
+                   <div className="flex gap-2 w-full">
+                      <input 
+                        placeholder="Item name"
+                        className="flex-1 bg-white border border-transparent focus:border-primary rounded px-3 py-2 outline-none transition-all text-sm shadow-sm"
+                        value={item.name}
+                        onChange={(e) => updateItem(idx, 'name', e.target.value)}
+                      />
+                      <button 
+                        onClick={() => removeItem(idx)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                   </div>
+                   
+                   {/* Row 2: Category, Qty, Price */}
+                   <div className="flex gap-2 items-center">
+                       {/* Category Select */}
+                       <select 
+                          className="flex-1 bg-white border border-transparent focus:border-primary rounded px-2 py-2 outline-none text-xs text-gray-600 shadow-sm"
+                          value={item.category || ''}
+                          onChange={(e) => updateItem(idx, 'category', e.target.value)}
+                       >
+                          <option value="">{t.selectCategory}</option>
+                          {categories.map((cat) => (
+                             <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                       </select>
 
-                  {/* Price Input */}
-                  <div className="relative w-24 flex-shrink-0">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
-                    <input 
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      className="w-full bg-gray-50 border border-transparent focus:bg-white focus:border-primary rounded pl-5 pr-2 py-2 font-bold text-right outline-none transition-all text-sm"
-                      value={item.price || ''}
-                      onChange={(e) => updateItem(idx, 'price', parseFloat(e.target.value))}
-                    />
-                  </div>
+                      {/* Quantity Input */}
+                      <div className="relative w-16 flex-shrink-0">
+                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">x</span>
+                         <input 
+                          type="number"
+                          min="1"
+                          placeholder="1"
+                          className="w-full bg-white border border-transparent focus:border-primary rounded pl-5 pr-1 py-2 text-center outline-none transition-all text-sm shadow-sm"
+                          value={item.quantity || 1}
+                          onChange={(e) => {
+                              const val = parseInt(e.target.value);
+                              updateItem(idx, 'quantity', isNaN(val) ? 1 : val);
+                          }}
+                        />
+                      </div>
 
-                  <button 
-                    onClick={() => removeItem(idx)}
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-50 group-hover:opacity-100"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                      {/* Price Input */}
+                      <div className="relative w-24 flex-shrink-0">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                        <input 
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          className="w-full bg-white border border-transparent focus:border-primary rounded pl-5 pr-2 py-2 font-bold text-right outline-none transition-all text-sm shadow-sm"
+                          value={item.price || ''}
+                          onChange={(e) => updateItem(idx, 'price', parseFloat(e.target.value))}
+                        />
+                      </div>
+                   </div>
                 </div>
               ))}
             </div>

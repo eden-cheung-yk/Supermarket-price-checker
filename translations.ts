@@ -36,7 +36,9 @@ export const translations = {
       addItem: "Add Item",
       total: "Total Amount",
       save: "Save Receipt",
-      back: "Back"
+      back: "Back",
+      category: "Category",
+      selectCategory: "Select Category"
     },
     priceCheck: {
       title: "Price Check",
@@ -59,6 +61,11 @@ export const translations = {
       title: "Settings",
       desc: "App configuration and guide.",
       language: "Language / 語言",
+      categories: "Manage Categories",
+      addCategory: "Add Category",
+      editCategory: "Edit",
+      deleteCategory: "Delete",
+      enterCategory: "Category name...",
       status: "System Status",
       guide: "User Guide",
       guideScan: "1. Scanning",
@@ -103,7 +110,9 @@ export const translations = {
       addItem: "新增項目",
       total: "總金額",
       save: "儲存收據",
-      back: "返回"
+      back: "返回",
+      category: "分類",
+      selectCategory: "選擇分類"
     },
     priceCheck: {
       title: "格價助手",
@@ -126,6 +135,11 @@ export const translations = {
       title: "設定",
       desc: "系統設定及教學。",
       language: "語言 / Language",
+      categories: "管理分類",
+      addCategory: "新增分類",
+      editCategory: "編輯",
+      deleteCategory: "刪除",
+      enterCategory: "分類名稱...",
       status: "系統狀態",
       guide: "使用教學",
       guideScan: "1. 掃描單據",

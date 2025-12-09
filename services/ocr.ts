@@ -12,10 +12,6 @@ interface ParsedReceipt {
 
 // --- Image Preprocessing ---
 
-/**
- * Preprocesses the image to improve OCR accuracy.
- * Converts to Grayscale -> Increases Contrast -> Binarizes.
- */
 const preprocessImage = (imageBlob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -26,12 +22,12 @@ const preprocessImage = (imageBlob: Blob): Promise<string> => {
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         URL.revokeObjectURL(url);
-        resolve(url); // Fallback to original if context fails
+        resolve(url); 
         return;
       }
 
-      // 1. Scale image (2x up to a limit) to help with small receipt fonts
-      const scaleFactor = Math.min(2, 3000 / Math.max(img.width, img.height)); 
+      // 1. Scale image up to help with small receipt fonts
+      const scaleFactor = Math.min(2.5, 3000 / Math.max(img.width, img.height)); 
       canvas.width = img.width * scaleFactor;
       canvas.height = img.height * scaleFactor;
 
@@ -41,22 +37,18 @@ const preprocessImage = (imageBlob: Blob): Promise<string> => {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
 
-      // 2. Grayscale & Binarization (Thresholding)
-      // This turns the image into high-contrast Black & White
+      // 2. Grayscale & Binarization
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
-        
-        // Luminosity formula
         const gray = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        
-        // Threshold (128 is mid-point, slightly higher helps remove faint shadows)
-        const val = gray > 140 ? 255 : 0;
+        // Threshold adjusted for typical receipt paper contrast
+        const val = gray > 145 ? 255 : 0; 
 
-        data[i] = val;     // R
-        data[i + 1] = val; // G
-        data[i + 2] = val; // B
+        data[i] = val;
+        data[i + 1] = val;
+        data[i + 2] = val;
       }
 
       ctx.putImageData(imageData, 0, 0);
@@ -68,111 +60,176 @@ const preprocessImage = (imageBlob: Blob): Promise<string> => {
   });
 };
 
-// --- Regex Helpers ---
+// --- Parsing Helpers ---
 
-/**
- * Clean up OCR text: remove empty lines, very short lines, and common noise characters
- */
 const cleanText = (text: string): string[] => {
   return text
     .split('\n')
     .map(line => line.trim())
-    .filter(line => line.length > 2); // Ignore lines with 1-2 chars
+    .filter(line => line.length > 0); 
 };
 
-/**
- * Enhanced Date Extraction
- * Supports: YYYY-MM-DD, DD/MM/YYYY, Jan 01 2024, etc.
- */
 const extractDate = (lines: string[]): string => {
   const datePatterns = [
-    /\d{4}[-./]\d{2}[-./]\d{2}/,       // 2024-01-01
-    /\d{1,2}[-./]\d{1,2}[-./]\d{2,4}/,  // 01/01/2024
-    /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}/i // Jan 1, 2024
+    /\d{4}[-./]\d{2}[-./]\d{2}/,       
+    /\d{1,2}[-./]\d{1,2}[-./]\d{2,4}/,  
+    /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}/i
   ];
 
   for (const line of lines) {
     for (const pattern of datePatterns) {
       const match = line.match(pattern);
-      if (match) {
-        // Simple normalization attempt (can be improved with date-fns if needed)
-        return match[0];
-      }
+      if (match) return match[0];
     }
   }
   return new Date().toISOString().split('T')[0];
 };
 
-/**
- * Enhanced Total Extraction
- * Looks for specific keywords and finds the largest number associated with them.
- */
 const extractTotal = (lines: string[]): number => {
-  // Keywords that strongly indicate the final price
   const totalKeywords = ['total', 'balance due', 'amount due', 'final', 'grand total'];
-  // Keywords to avoid (subtotal usually comes before total)
   const avoidKeywords = ['subtotal', 'tax', 'hst', 'gst', 'pst', 'change', 'cash', 'visa', 'debit'];
-
-  let possibleTotals: number[] = [];
-
   const priceRegex = /(\d{1,3}(?:,\d{3})*\.\d{2})/;
+  
+  let maxVal = 0;
 
-  // Reverse iterate (Total is usually at the bottom)
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i].toLowerCase();
     const match = lines[i].match(priceRegex);
 
     if (match) {
       const val = parseFloat(match[1].replace(/,/g, ''));
-      
-      // If line contains a "Total" keyword, it's a strong candidate
       if (totalKeywords.some(k => line.includes(k)) && !avoidKeywords.some(k => line.includes(k))) {
-        return val; // High confidence
+        return val; 
       }
-      possibleTotals.push(val);
+      if (val > maxVal) maxVal = val;
     }
   }
-
-  // Fallback: If no "Total" keyword found, take the largest number found in the bottom 1/3rd of the receipt
-  // assuming the total is usually the highest value.
-  if (possibleTotals.length > 0) {
-    return Math.max(...possibleTotals); 
-  }
-  
-  return 0;
+  return maxVal;
 };
 
-/**
- * Attempt to extract store name.
- * Skips lines that look like addresses, phone numbers, or dates.
- */
 const extractStore = (lines: string[]): string => {
-  const skipPatterns = [
-    /^\d+/,             // Starts with number (Address)
-    /phone|tel|fax/i,   // Phone number
-    /www\.|http|\.com/i,// Website
-    /welcome/i,         // "Welcome to..."
-    /receipt/i          // "Sales Receipt"
-  ];
-
-  for (let i = 0; i < Math.min(5, lines.length); i++) {
+  const skipPatterns = [/^\d+/, /phone|tel|fax/i, /www\.|http|\.com/i, /welcome/i, /receipt/i, /gst|hst/i];
+  for (let i = 0; i < Math.min(6, lines.length); i++) {
     const line = lines[i];
     if (line.length > 3 && !skipPatterns.some(p => p.test(line))) {
-        // Convert all caps to Title Case for better readability
         return line.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
     }
   }
   return "Unknown Store";
 };
 
-/**
- * Main OCR Function
- */
-export const processReceiptWithOCR = async (imageBlob: Blob): Promise<ParsedReceipt> => {
-  // 1. Preprocess Image
-  const preprocessedImage = await preprocessImage(imageBlob);
+const extractItems = (lines: string[]): ProductItem[] => {
+  const items: ProductItem[] = [];
+  const LIST_END_MARKERS = ['total', 'subtotal', 'tax', 'hst', 'gst', 'pst', 'items sold', 'balance', 'visa', 'debit', 'auth', 'amount due', 'card'];
+  
+  // Regex 1: Standard Line "Milk 3.99"
+  // Captures: 1=Name, 2=Price
+  const lineWithPriceRegex = /^(.+?)\s+(-?\d+\.\d{2})\s*[A-Z]*$/;
+  
+  // Regex 2: Quantity Line "2 @ 1.99"
+  // Captures: 1=Qty, 2=UnitPrice
+  const quantityLineRegex = /^(\d+)\s*[@x]\s*(\d+\.\d{2})/i;
+  
+  // Regex 3: Standalone Price "3.99"
+  const standalonePriceRegex = /^(-?\d+\.\d{2})\s*[A-Z]*$/;
+  
+  // Regex 4: SKU/Barcodes (5+ digits at start of line)
+  const longNumberRegex = /^\d{5,}$/;
 
-  // 2. Run Tesseract
+  let buffer: string[] = []; // Stores text lines that haven't been assigned to an item yet
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const lowerLine = line.toLowerCase();
+
+    // End condition: Stop processing if we hit footer markers
+    if (LIST_END_MARKERS.some(marker => lowerLine.startsWith(marker))) {
+        // Safety break to stop capturing taxes/totals as items
+        break; 
+    }
+    
+    // Skip specific headers or noise
+    if (line.match(/welcome|receipt|store|phone|cashier/i)) continue;
+    if (/\d{4}[-./]\d{2}[-./]\d{2}/.test(line)) continue; // Date line
+
+    // --- Scenario A: Standard Line with Price ---
+    const priceMatch = line.match(lineWithPriceRegex);
+    if (priceMatch) {
+      let name = priceMatch[1].trim();
+      let price = parseFloat(priceMatch[2]);
+      let quantity = 1;
+
+      // Check buffer for quantity context or multi-line name
+      if (buffer.length > 0) {
+        const lastLine = buffer[buffer.length - 1];
+        const qtyMatch = lastLine.match(quantityLineRegex);
+        
+        if (qtyMatch) {
+            quantity = parseInt(qtyMatch[1], 10);
+            // Note: price extracted from current line is usually the Total for that line item
+        } else if (!longNumberRegex.test(lastLine) && lastLine.length > 2) {
+            // Treat as Multi-line name: "Organic" \n "Bananas 2.00"
+            name = `${lastLine} ${name}`;
+        }
+      }
+
+      // Cleanup Name (remove leading SKU e.g., "4011 Bananas")
+      name = name.replace(/^\d{4,}\s+/, '');
+
+      if (name.length > 1 && !/^\d+$/.test(name)) {
+        items.push({ id: generateId(), name, price, quantity });
+      }
+      buffer = []; 
+      continue;
+    }
+
+    // --- Scenario B: Standalone Price Line ---
+    // Sometimes receipts split name and price:
+    // "Tomato Soup"
+    // "2.99"
+    const standaloneMatch = line.match(standalonePriceRegex);
+    if (standaloneMatch) {
+        let price = parseFloat(standaloneMatch[1]);
+        let quantity = 1;
+        let name = "";
+
+        if (buffer.length > 0) {
+            // Reconstruct name from buffer
+            let nameParts: string[] = [];
+            for (const bufLine of buffer) {
+                const qtyMatch = bufLine.match(quantityLineRegex);
+                if (qtyMatch) {
+                    quantity = parseInt(qtyMatch[1], 10);
+                } else if (!longNumberRegex.test(bufLine)) {
+                    nameParts.push(bufLine);
+                }
+            }
+            name = nameParts.join(' ');
+        }
+        
+        name = name.replace(/^\d{4,}\s+/, '');
+        
+        if (name.length > 1) {
+             items.push({ id: generateId(), name, price, quantity });
+        }
+        buffer = [];
+        continue;
+    }
+
+    // --- Scenario C: Text Line ---
+    // Add to buffer (might be name part or quantity line for next item)
+    if (line.length > 0) {
+        buffer.push(line);
+        // Prevent buffer from growing infinitely if OCR returns garbage
+        if (buffer.length > 4) buffer.shift();
+    }
+  }
+
+  return items;
+};
+
+export const processReceiptWithOCR = async (imageBlob: Blob): Promise<ParsedReceipt> => {
+  const preprocessedImage = await preprocessImage(imageBlob);
   const worker = await Tesseract.createWorker('eng'); 
   const result = await worker.recognize(preprocessedImage);
   await worker.terminate();
@@ -180,71 +237,16 @@ export const processReceiptWithOCR = async (imageBlob: Blob): Promise<ParsedRece
   const rawText = result.data.text;
   const lines = cleanText(rawText);
 
-  // 3. Extract Meta Data
   const storeName = extractStore(lines);
   const date = extractDate(lines);
   const total = extractTotal(lines);
-
-  // 4. Extract Items
-  const items: ProductItem[] = [];
-  
-  // Stop words that indicate the end of the item list
-  const LIST_END_MARKERS = ['total', 'subtotal', 'tax', 'hst', 'gst', 'pst', 'items sold', 'balance', 'visa', 'debit', 'auth'];
-  
-  // Regex to find price at the end of a line (e.g., "Milk 2.99" or "Milk 2.99 H")
-  // Captures: Group 1 (Name), Group 2 (Price)
-  const itemLineRegex = /^(.+?)\s+(\d+\.\d{2})\s*[A-Z]*$/;
-
-  // Regex to detect quantity lines (e.g., "2 @ 1.99")
-  const quantityRegex = /^(\d+)\s*[@x]\s*(\d+\.\d{2})/;
-
-  let isBelowListEnd = false;
-
-  lines.forEach(line => {
-    const lowerLine = line.toLowerCase();
-    
-    // Check if we hit the footer section
-    if (LIST_END_MARKERS.some(marker => lowerLine.includes(marker))) {
-      isBelowListEnd = true;
-      return;
-    }
-
-    if (isBelowListEnd) return;
-
-    // A. Check for Item line
-    const itemMatch = line.match(itemLineRegex);
-    if (itemMatch) {
-      let name = itemMatch[1].trim();
-      const price = parseFloat(itemMatch[2]);
-      let quantity = 1;
-
-      // Filter out garbage lines (e.g. pure numbers, dates)
-      if (name.length < 3 || /^\d+$/.test(name) || name.includes('...')) return;
-
-      // B. Check if name contains quantity info (e.g. "2 @ 1.99 ItemName" or "ItemName 2 @ 1.99")
-      // Currently simplest to just assume 1 unless we parsed a quantity line immediately before (advanced logic omitted for simplicity)
-      
-      // Basic quantity heuristic: if the line looks like "2 @ 1.99", this line might be a modifier for the *next* item
-      // But commonly on receipts:
-      // Line 1:  Item Name   5.00
-      // OR
-      // Line 1:  Item Name
-      // Line 2:    2 @ 2.50  5.00
-      
-      items.push({
-        id: generateId(),
-        name: name,
-        price: price,
-        quantity: quantity
-      });
-    }
-  });
+  const items = extractItems(lines);
 
   return {
     storeName,
     date,
     total,
-    items: items.length > 0 ? items : [{ id: generateId(), name: "Parsed Item 1", price: 0, quantity: 1 }],
+    items: items.length > 0 ? items : [{ id: generateId(), name: "Parsed Item", price: 0, quantity: 1 }],
     rawText
   };
 };
