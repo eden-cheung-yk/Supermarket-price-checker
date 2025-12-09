@@ -1,5 +1,4 @@
-
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera, X, Check, Plus, Trash2, Keyboard, Sparkles } from 'lucide-react';
 import { processReceiptWithOCR } from '../services/ocr';
 import { Receipt, ProductItem } from '../types';
@@ -66,15 +65,24 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
     }
   };
 
+  const calculateTotal = (items: ProductItem[] | undefined): number => {
+    if (!items) return 0;
+    return items.reduce((sum, item) => {
+      const price = item.price || 0;
+      const qty = item.quantity || 1;
+      return sum + (price * qty);
+    }, 0);
+  };
+
   const handleSave = () => {
     if (parsedData) {
       const currentItems = parsedData.items || [];
-      // Recalculate total if user edited items (Price * Quantity)
-      const calculatedTotal = currentItems.reduce((sum, i) => sum + ((i.price || 0) * (i.quantity || 1)), 0);
+      const calculatedTotal = calculateTotal(currentItems);
       
       const finalReceipt: Receipt = {
         ...parsedData,
-        totalAmount: calculatedTotal > 0 ? calculatedTotal : (parsedData.totalAmount || 0),
+        // Ensure totalAmount is a valid number, priority to calculated total
+        totalAmount: calculatedTotal,
         items: currentItems
       } as Receipt;
       
@@ -106,8 +114,8 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
     setParsedData({ ...parsedData, items: newItems });
   };
 
-  // Calculate total dynamically for display (Price * Quantity)
-  const currentTotal = parsedData?.items?.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 1)), 0) || parsedData?.totalAmount || 0;
+  // Live total for the UI
+  const currentTotal = calculateTotal(parsedData?.items);
 
   if (step === 'processing') {
     return (
@@ -164,31 +172,37 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
           <div>
             <div className="flex justify-between items-end mb-2">
                 <label className="block text-sm font-medium text-gray-500">{t.items}</label>
+                <span className="text-xs text-gray-400">Name | Qty | Price</span>
             </div>
             
             <div className="space-y-3">
               {parsedData.items?.map((item, idx) => (
-                <div key={item.id} className="flex gap-2 items-center animate-fadeIn">
+                <div key={item.id} className="flex gap-2 items-center animate-fadeIn group">
                    <input 
                     placeholder="Item name"
                     className="flex-1 bg-gray-50 border border-transparent focus:bg-white focus:border-primary rounded px-3 py-2 outline-none transition-all text-sm"
                     value={item.name}
                     onChange={(e) => updateItem(idx, 'name', e.target.value)}
                   />
+                  
                   {/* Quantity Input */}
-                  <div className="relative w-16">
-                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">x</span>
+                  <div className="relative w-16 flex-shrink-0">
+                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">x</span>
                      <input 
                       type="number"
                       min="1"
                       placeholder="1"
-                      className="w-full bg-gray-50 border border-transparent focus:bg-white focus:border-primary rounded pl-4 pr-1 py-2 text-center outline-none transition-all text-sm"
+                      className="w-full bg-gray-50 border border-transparent focus:bg-white focus:border-primary rounded pl-5 pr-1 py-2 text-center outline-none transition-all text-sm"
                       value={item.quantity || 1}
-                      onChange={(e) => updateItem(idx, 'quantity', parseInt(e.target.value) || 1)}
+                      onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          updateItem(idx, 'quantity', isNaN(val) ? 1 : val);
+                      }}
                     />
                   </div>
+
                   {/* Price Input */}
-                  <div className="relative w-24">
+                  <div className="relative w-24 flex-shrink-0">
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
                     <input 
                       type="number"
@@ -199,9 +213,10 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
                       onChange={(e) => updateItem(idx, 'price', parseFloat(e.target.value))}
                     />
                   </div>
+
                   <button 
                     onClick={() => removeItem(idx)}
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-50 group-hover:opacity-100"
                   >
                     <Trash2 size={18} />
                   </button>
@@ -218,13 +233,18 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
           </div>
 
           {/* Total */}
-          <div className="pt-4 border-t mt-4 flex justify-between items-center">
-            <span className="font-bold text-lg text-gray-700">{t.total}</span>
-            <span className="font-bold text-3xl text-primary">${currentTotal.toFixed(2)}</span>
+          <div className="pt-4 border-t mt-4 flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+            <div className="text-gray-600 text-sm">
+                Total calculated from items
+            </div>
+            <div className="flex items-center gap-2">
+                <span className="font-bold text-lg text-gray-700">{t.total}:</span>
+                <span className="font-bold text-3xl text-primary">${currentTotal.toFixed(2)}</span>
+            </div>
           </div>
         </div>
 
-        <div className="fixed bottom-20 left-0 right-0 px-4 flex gap-3 max-w-2xl mx-auto">
+        <div className="fixed bottom-20 left-0 right-0 px-4 flex gap-3 max-w-2xl mx-auto z-10">
           <button onClick={() => setStep('capture')} className="flex-1 py-3 rounded-xl bg-white border border-gray-300 font-bold text-gray-700 shadow-sm">{t.back}</button>
           <button onClick={handleSave} className="flex-[2] py-3 rounded-xl bg-primary text-white font-bold shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-transform">
             <Check size={20} /> {t.save}

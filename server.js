@@ -1,45 +1,47 @@
-
 import express from 'express';
-import pkg from 'pg';
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Extract Pool from the default export or named export
-const { Pool } = pkg;
-
-// Setup for ES Modules
+// Setup for ES Modules path resolution
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Database Configuration (PostgreSQL)
-// On Docker, this uses the Service Name 'db' as the hostname.
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://smartprice:securepassword@db:5432/smartprice',
-});
+const DB_FILE = process.env.DB_FILE || 'smartprice.db';
 
 // Middleware
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Initialize Database Table
+// Database Interface
+let db;
+
 const initDB = async () => {
   try {
-    // Wait for DB to be ready in Docker environment
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    await pool.query(`
+    db = await open({
+      filename: path.join(__dirname, DB_FILE),
+      driver: sqlite3.Database
+    });
+
+    // Create Table for Receipts
+    // We use a JSON column (text) to store the complex receipt structure
+    await db.exec(`
       CREATE TABLE IF NOT EXISTS receipts (
-        id VARCHAR(255) PRIMARY KEY,
-        content JSONB NOT NULL,
-        created_at BIGINT NOT NULL
-      );
+        id TEXT PRIMARY KEY,
+        store_name TEXT,
+        date TEXT,
+        total_amount REAL,
+        content TEXT, 
+        created_at INTEGER
+      )
     `);
-    console.log('Database initialized successfully');
+
+    console.log(`✅ Connected to SQLite database: ${DB_FILE}`);
   } catch (err) {
-    console.error('Error initializing database:', err);
+    console.error('❌ Failed to initialize database:', err);
   }
 };
 
@@ -50,8 +52,10 @@ initDB();
 // GET: Fetch all receipts
 app.get('/api/receipts', async (req, res) => {
   try {
-    const result = await pool.query('SELECT content FROM receipts ORDER BY created_at DESC');
-    const receipts = result.rows.map(row => row.content);
+    if (!db) return res.status(503).json({ error: 'Database not initialized' });
+    
+    const rows = await db.all('SELECT content FROM receipts ORDER BY created_at DESC');
+    const receipts = rows.map(row => JSON.parse(row.content));
     res.json(receipts);
   } catch (err) {
     console.error(err);
@@ -62,40 +66,60 @@ app.get('/api/receipts', async (req, res) => {
 // POST: Save a new receipt
 app.post('/api/receipts', async (req, res) => {
   try {
+    if (!db) return res.status(503).json({ error: 'Database not initialized' });
+
     const receipt = req.body;
     if (!receipt.id || !receipt.createdAt) {
       return res.status(400).json({ error: 'Invalid receipt data' });
     }
-    
-    await pool.query(
-      'INSERT INTO receipts (id, content, created_at) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET content = $2',
-      [receipt.id, receipt, receipt.createdAt]
+
+    // Upsert logic (Insert or Replace)
+    await db.run(
+      `INSERT OR REPLACE INTO receipts (id, store_name, date, total_amount, content, created_at) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        receipt.id,
+        receipt.storeName || 'Unknown',
+        receipt.date,
+        receipt.totalAmount,
+        JSON.stringify(receipt),
+        receipt.createdAt
+      ]
     );
+
     res.status(201).json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: 'Failed to save receipt' });
   }
 });
 
 // DELETE: Remove a receipt
 app.delete('/api/receipts/:id', async (req, res) => {
   try {
+    if (!db) return res.status(503).json({ error: 'Database not initialized' });
+
     const { id } = req.params;
-    await pool.query('DELETE FROM receipts WHERE id = $1', [id]);
+    await db.run('DELETE FROM receipts WHERE id = ?', [id]);
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: 'Failed to delete receipt' });
   }
 });
 
 // --- Serve React Frontend ---
-// Fallback to index.html for React Router
+// Requests not matching API routes are sent to index.html (SPA support)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`
+  🚀 SmartPrice Server running!
+  ---------------------------
+  Local:   http://localhost:${PORT}
+  Network: http://<YOUR_NAS_IP>:${PORT}
+  ---------------------------
+  `);
 });
