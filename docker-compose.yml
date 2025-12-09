@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # The Web Application
+  # 1. Web Application
   app:
     container_name: smartprice-app
     build: 
@@ -9,16 +9,16 @@ services:
       dockerfile: Dockerfile
     restart: always
     ports:
-      - "8088:3000" # Map NAS port 8088 to Container port 3000
+      - "8088:3000" # Access via http://NAS_IP:8088
     environment:
-      - DATABASE_URL=postgresql://smartprice:securepassword@db:5432/smartprice
       - PORT=3000
+      - DATABASE_URL=postgresql://smartprice:securepassword@db:5432/smartprice
       - NODE_ENV=production
     depends_on:
       db:
         condition: service_healthy
 
-  # The Database (PostgreSQL)
+  # 2. Database (PostgreSQL)
   db:
     container_name: smartprice-db
     image: postgres:15-alpine
@@ -28,7 +28,7 @@ services:
       - POSTGRES_PASSWORD=securepassword
       - POSTGRES_DB=smartprice
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - smartprice_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U smartprice"]
       interval: 5s
@@ -36,4 +36,4 @@ services:
       retries: 5
 
 volumes:
-  pgdata:
+  smartprice_data:

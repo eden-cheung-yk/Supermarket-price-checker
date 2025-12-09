@@ -69,8 +69,8 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
   const handleSave = () => {
     if (parsedData) {
       const currentItems = parsedData.items || [];
-      // Recalculate total if user edited items
-      const calculatedTotal = currentItems.reduce((sum, i) => sum + (i.price || 0), 0);
+      // Recalculate total if user edited items (Price * Quantity)
+      const calculatedTotal = currentItems.reduce((sum, i) => sum + ((i.price || 0) * (i.quantity || 1)), 0);
       
       const finalReceipt: Receipt = {
         ...parsedData,
@@ -106,8 +106,8 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
     setParsedData({ ...parsedData, items: newItems });
   };
 
-  // Calculate total dynamically for display
-  const currentTotal = parsedData?.items?.reduce((sum, item) => sum + (item.price || 0), 0) || parsedData?.totalAmount || 0;
+  // Calculate total dynamically for display (Price * Quantity)
+  const currentTotal = parsedData?.items?.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 1)), 0) || parsedData?.totalAmount || 0;
 
   if (step === 'processing') {
     return (
@@ -175,6 +175,19 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang }) => {
                     value={item.name}
                     onChange={(e) => updateItem(idx, 'name', e.target.value)}
                   />
+                  {/* Quantity Input */}
+                  <div className="relative w-16">
+                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">x</span>
+                     <input 
+                      type="number"
+                      min="1"
+                      placeholder="1"
+                      className="w-full bg-gray-50 border border-transparent focus:bg-white focus:border-primary rounded pl-4 pr-1 py-2 text-center outline-none transition-all text-sm"
+                      value={item.quantity || 1}
+                      onChange={(e) => updateItem(idx, 'quantity', parseInt(e.target.value) || 1)}
+                    />
+                  </div>
+                  {/* Price Input */}
                   <div className="relative w-24">
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
                     <input 

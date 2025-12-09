@@ -113,22 +113,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ receipts, lang }) => {
       </div>
 
       {/* Chart */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 h-64">
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 h-64 flex flex-col">
         <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
           <TrendingUp size={18} /> {t.spendingTrend}
         </h3>
-        <ResponsiveContainer width="100%" height="80%">
-          <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-            <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={12} tickMargin={10} />
-            <YAxis hide />
-            <Tooltip 
-              contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-              cursor={{ fill: '#f3f4f6' }}
-            />
-            <Bar dataKey="amount" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
-          </BarChart>
-        </ResponsiveContainer>
+        <div className="flex-1 w-full min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={12} tickMargin={10} />
+              <YAxis hide />
+              <Tooltip 
+                contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                cursor={{ fill: '#f3f4f6' }}
+              />
+              <Bar dataKey="amount" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );
