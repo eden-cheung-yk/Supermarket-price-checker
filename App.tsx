@@ -5,9 +5,10 @@ import { Dashboard } from './components/Dashboard';
 import { Scanner } from './components/Scanner';
 import { History } from './components/History';
 import { PriceCheck } from './components/PriceCheck';
+import { ShoppingList } from './components/ShoppingList';
 import { ViewState, Receipt } from './types';
-import { getAllReceipts, saveReceipt, deleteReceipt } from './services/db';
-import { BookOpen, Camera, Search, Server, Tag, Plus, Trash2, Edit2, ShieldCheck, Globe } from 'lucide-react';
+import { getAllReceipts, saveReceipt, deleteReceipt, clearAllData, getServerStats } from './services/db';
+import { BookOpen, Camera, Search, Server, Tag, Plus, Trash2, Edit2, ShieldCheck, Globe, Download, PieChart, AlertTriangle, RefreshCcw } from 'lucide-react';
 import { translations, Language } from './translations';
 
 // --- Sub-component: Settings & Guide View ---
@@ -16,9 +17,15 @@ interface SettingsProps {
   setLang: (l: Language) => void;
   categories: string[];
   setCategories: (cats: string[]) => void;
+  budget: number;
+  setBudget: (b: number) => void;
+  onExport: () => void;
+  onClearData: (onlyInvalid: boolean) => void;
+  serverStats: { receiptCount: number, listCount: number } | null;
+  refreshStats: () => void;
 }
 
-const SettingsView: React.FC<SettingsProps> = ({ lang, setLang, categories, setCategories }) => {
+const SettingsView: React.FC<SettingsProps> = ({ lang, setLang, categories, setCategories, budget, setBudget, onExport, onClearData, serverStats, refreshStats }) => {
   const t = translations[lang].settings;
   const [newCategory, setNewCategory] = useState('');
 
@@ -63,6 +70,24 @@ const SettingsView: React.FC<SettingsProps> = ({ lang, setLang, categories, setC
             <option value="en">English</option>
             <option value="zh">繁體中文</option>
         </select>
+      </div>
+
+      {/* Budget Setting */}
+      <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm flex justify-between items-center">
+        <div className="flex items-center gap-3">
+            <PieChart className="text-purple-500" size={24} />
+            <span className="font-bold text-gray-800">{t.budget}</span>
+        </div>
+        <div className="relative w-24">
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+            <input 
+                type="number"
+                value={budget || ''} 
+                placeholder="0"
+                onChange={(e) => setBudget(parseFloat(e.target.value))}
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-6 pr-2 py-2 text-sm font-bold outline-none focus:border-primary text-right"
+            />
+        </div>
       </div>
 
       {/* Category Management */}
@@ -117,20 +142,72 @@ const SettingsView: React.FC<SettingsProps> = ({ lang, setLang, categories, setC
         </div>
       </div>
 
-      {/* System Status Card */}
-      <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-5 text-white shadow-md">
-        <div className="flex items-center gap-3 mb-3">
-          <Server className="text-green-400" size={24} />
-          <h2 className="font-bold text-lg">{t.status}</h2>
+       {/* Data Management */}
+       <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm space-y-4">
+        <div className="flex items-center gap-3 mb-2">
+            <Server className="text-indigo-500" size={24} />
+            <span className="font-bold text-gray-800">{t.dataManagement}</span>
         </div>
-        <div className="space-y-2 text-sm text-gray-300">
-          <div className="flex justify-between border-b border-gray-700 pb-2">
-            <span>Storage</span>
-            <span className="font-mono text-white">Local / NAS</span>
+        <button 
+          onClick={onExport}
+          className="w-full flex items-center justify-center gap-2 bg-indigo-50 text-indigo-600 font-bold py-3 rounded-xl hover:bg-indigo-100 transition-colors"
+        >
+          <Download size={20} /> {t.exportCSV}
+        </button>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="bg-red-50 rounded-xl p-5 border border-red-100 shadow-sm space-y-4">
+        <div className="flex items-center gap-3 mb-2">
+            <AlertTriangle className="text-red-500" size={24} />
+            <span className="font-bold text-red-700">{t.clearData}</span>
+        </div>
+        <div className="grid grid-cols-1 gap-3">
+             <button 
+              onClick={() => {
+                  if(confirm(t.confirmClear)) onClearData(true);
+              }}
+              className="w-full bg-white border border-red-200 text-red-600 font-medium py-2 rounded-lg hover:bg-red-100 transition-colors"
+            >
+              {t.clearGhost}
+            </button>
+            <button 
+              onClick={() => {
+                  if(confirm(t.confirmClear)) onClearData(false);
+              }}
+              className="w-full bg-red-600 text-white font-bold py-2 rounded-lg hover:bg-red-700 transition-colors"
+            >
+              {t.clearAll}
+            </button>
+        </div>
+      </div>
+
+      {/* System Status Card */}
+      <div className="bg-gradient-to-br from-slate-700 to-slate-900 rounded-xl p-5 text-white shadow-md">
+        <div className="flex justify-between items-start mb-3">
+          <div className="flex items-center gap-3">
+            <Server className="text-blue-400" size={24} />
+            <h2 className="font-bold text-lg">{t.status}</h2>
           </div>
-          <div className="flex justify-between border-b border-gray-700 pb-2">
-            <span>Version</span>
-            <span className="font-mono text-white">v1.4.0 (Cats)</span>
+          <button onClick={refreshStats} className="text-gray-400 hover:text-white transition-colors">
+            <RefreshCcw size={18} />
+          </button>
+        </div>
+        
+        <div className="space-y-2 text-sm text-slate-300">
+          <div className="flex justify-between border-b border-slate-600 pb-2">
+            <span>Server Connection</span>
+            <span className={`font-mono font-bold ${serverStats ? 'text-green-400' : 'text-red-400'}`}>
+               {serverStats ? 'Online' : 'Offline'}
+            </span>
+          </div>
+          <div className="flex justify-between border-b border-slate-600 pb-2">
+            <span>Server Receipts</span>
+            <span className="font-mono text-white">{serverStats?.receiptCount ?? '-'}</span>
+          </div>
+          <div className="flex justify-between border-b border-slate-600 pb-2">
+            <span>Storage Type</span>
+            <span className="font-mono text-yellow-300">JSON File (Server)</span>
           </div>
         </div>
       </div>
@@ -197,12 +274,25 @@ const SettingsView: React.FC<SettingsProps> = ({ lang, setLang, categories, setC
 function App() {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [serverStats, setServerStats] = useState<{receiptCount: number, listCount: number} | null>(null);
   const [lang, setLang] = useState<Language>(() => (localStorage.getItem('smartprice_lang') as Language) || 'en');
   
-  // Category State (Persisted in LocalStorage)
+  // Category State
   const [categories, setCategories] = useState<string[]>(() => {
-    const saved = localStorage.getItem('smartprice_categories');
-    return saved ? JSON.parse(saved) : ['Groceries', 'Household', 'Snacks', 'Beverages', 'Produce', 'Meat', 'Dairy'];
+    try {
+      const saved = localStorage.getItem('smartprice_categories');
+      const defaults = ['Groceries', 'Household', 'Snacks', 'Beverages', 'Produce', 'Meat', 'Dairy'];
+      if (!saved) return defaults;
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : defaults;
+    } catch(e) {
+      return ['Groceries', 'Household'];
+    }
+  });
+
+  // Budget State
+  const [budget, setBudget] = useState<number>(() => {
+    return Number(localStorage.getItem('smartprice_budget')) || 0;
   });
 
   useEffect(() => {
@@ -217,20 +307,74 @@ function App() {
     localStorage.setItem('smartprice_categories', JSON.stringify(categories));
   }, [categories]);
 
+  useEffect(() => {
+    localStorage.setItem('smartprice_budget', budget.toString());
+  }, [budget]);
+
   const loadData = async () => {
     const data = await getAllReceipts();
     setReceipts(data);
+    refreshServerStats();
+  };
+
+  const refreshServerStats = async () => {
+    const stats = await getServerStats();
+    setServerStats(stats);
   };
 
   const handleSaveReceipt = async (receipt: Receipt) => {
-    await saveReceipt(receipt);
-    await loadData();
-    setCurrentView(ViewState.DASHBOARD);
+    try {
+      await saveReceipt(receipt);
+      await loadData();
+      setCurrentView(ViewState.DASHBOARD);
+    } catch (e: any) {
+      // Propagate error to scanner component
+      throw e;
+    }
   };
 
   const handleDeleteReceipt = async (id: string) => {
     await deleteReceipt(id);
     await loadData();
+  };
+  
+  const handleClearData = async (onlyInvalid: boolean) => {
+      await clearAllData(onlyInvalid);
+      await loadData();
+      alert(onlyInvalid ? "Cleaned up invalid receipts." : "All receipts deleted.");
+  };
+
+  const exportToCSV = () => {
+    if (receipts.length === 0) {
+      alert("No data to export");
+      return;
+    }
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Date,Store,Item,Category,Price,Quantity,Total\n";
+
+    receipts.forEach(r => {
+      r.items.forEach(item => {
+        const row = [
+          r.date,
+          `"${r.storeName.replace(/"/g, '""')}"`,
+          `"${item.name.replace(/"/g, '""')}"`,
+          item.category || "",
+          item.price,
+          item.quantity,
+          (item.price * item.quantity).toFixed(2)
+        ].join(",");
+        csvContent += row + "\n";
+      });
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `smartprice_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const renderView = () => {
@@ -243,15 +387,27 @@ function App() {
         return <PriceCheck lang={lang} />;
       case ViewState.HISTORY:
         return <History receipts={receipts} onDelete={handleDeleteReceipt} lang={lang} />;
+      case ViewState.SHOPPING_LIST:
+        return <ShoppingList lang={lang} />;
       case ViewState.SETTINGS:
-        return <SettingsView lang={lang} setLang={setLang} categories={categories} setCategories={setCategories} />;
+        return (
+          <SettingsView 
+            lang={lang} setLang={setLang} 
+            categories={categories} setCategories={setCategories}
+            budget={budget} setBudget={setBudget}
+            onExport={exportToCSV}
+            onClearData={handleClearData}
+            serverStats={serverStats}
+            refreshStats={refreshServerStats}
+          />
+        );
       default:
         return <Dashboard receipts={receipts} lang={lang} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
+    <div className="min-h-screen bg-gray-50/50 text-gray-900 font-sans selection:bg-emerald-100">
       <main className="pb-20 md:pb-0 md:pt-20">
         {renderView()}
       </main>

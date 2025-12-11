@@ -1,83 +1,138 @@
-import { Receipt, PriceHistoryPoint } from '../types';
-import { openDB, DBSchema } from 'idb';
+import { createClient } from '@supabase/supabase-js';
+import { Receipt, PriceHistoryPoint, ShoppingItem } from '../types';
 
-const API_URL = '/api/receipts';
-const DB_NAME = 'smartprice-db';
-const STORE_NAME = 'receipts';
-
-// --- IndexedDB Setup (Fallback) ---
-interface SmartPriceDB extends DBSchema {
-  receipts: {
-    key: string;
-    value: Receipt;
-  };
-}
-
-const getLocalDB = async () => {
-  return openDB<SmartPriceDB>(DB_NAME, 1, {
-    upgrade(db) {
-      db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-    },
-  });
+// --- SUPABASE CONFIG ---
+// Safely access env variables to prevent crashes in environments where import.meta.env is undefined
+const getEnv = (key: string) => {
+  // @ts-ignore
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    // @ts-ignore
+    return import.meta.env[key];
+  }
+  return '';
 };
 
-// --- Hybrid Data Service ---
+const SUPABASE_URL = getEnv('VITE_SUPABASE_URL');
+const SUPABASE_KEY = getEnv('VITE_SUPABASE_ANON_KEY');
+
+// Initialize Supabase only if keys exist to prevent immediate errors
+const supabase = (SUPABASE_URL && SUPABASE_KEY) 
+  ? createClient(SUPABASE_URL, SUPABASE_KEY) 
+  : null;
+
+if (!supabase) {
+  console.warn("⚠️ Supabase not initialized. Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.");
+}
+
+// Helper to check if supabase is ready
+const checkSupabase = () => {
+  if (!supabase) throw new Error("Database connection not set up. Please set VITE_SUPABASE_URL variables.");
+  return supabase;
+};
+
+// --- TYPES FOR DB ---
+// We use camelCase in Typescript. The SQL schema in README uses quoted identifiers 
+// (e.g. "storeName") to match these keys exactly.
+
+// --- RECEIPTS ---
 
 export const getAllReceipts = async (): Promise<Receipt[]> => {
-  try {
-    // 1. Try Server
-    const response = await fetch(API_URL);
-    if (!response.ok) throw new Error('Server unavailable');
-    const receipts = await response.json();
-    return receipts.sort((a: Receipt, b: Receipt) => (b.createdAt || 0) - (a.createdAt || 0));
-  } catch (error) {
-    // 2. Fallback to Local
-    console.warn("Backend unavailable, using local storage.");
-    const db = await getLocalDB();
-    const receipts = await db.getAll(STORE_NAME);
-    return receipts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (!supabase) return [];
+  
+  const { data, error } = await supabase
+    .from('receipts')
+    .select('*')
+    .order('date', { ascending: false });
+
+  if (error) {
+    console.error("Error fetching receipts:", error);
+    return [];
   }
+  return data as Receipt[];
 };
 
 export const saveReceipt = async (receipt: Receipt): Promise<void> => {
-  try {
-    // 1. Try Server
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(receipt),
-    });
-    if (!response.ok) throw new Error('Server unavailable');
-  } catch (error) {
-    // 2. Fallback to Local
-    console.warn("Backend unavailable, saving locally.");
-    const db = await getLocalDB();
-    await db.put(STORE_NAME, receipt);
-  }
+  const db = checkSupabase();
+  // We use upsert so it handles both create and update based on ID
+  const { error } = await db
+    .from('receipts')
+    .upsert(receipt);
+
+  if (error) throw new Error(error.message);
 };
 
 export const deleteReceipt = async (id: string): Promise<void> => {
-  try {
-    // 1. Try Server
-    const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error('Server unavailable');
-  } catch (error) {
-    // 2. Fallback to Local
-    console.warn("Backend unavailable, deleting locally.");
-    const db = await getLocalDB();
-    await db.delete(STORE_NAME, id);
+  const db = checkSupabase();
+  const { error } = await db
+    .from('receipts')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+};
+
+export const clearAllData = async (onlyInvalid: boolean = false): Promise<void> => {
+  const db = checkSupabase();
+  if (onlyInvalid) {
+    // Delete receipts where totalAmount is 0 OR items is empty
+    const { data } = await db.from('receipts').select('id, totalAmount, items');
+    if (!data) return;
+
+    const idsToDelete = data
+      .filter((r: any) => r.totalAmount === 0 || !r.items || r.items.length === 0)
+      .map((r: any) => r.id);
+
+    if (idsToDelete.length > 0) {
+      await db.from('receipts').delete().in('id', idsToDelete);
+    }
+  } else {
+    // Delete ALL. We use a trick '.neq' on a non-existent ID to effectively select all rows if we don't pass a where clause?
+    // Actually, Supabase requires a WHERE clause for delete.
+    const { error } = await db.from('receipts').delete().neq('id', 'impossible_id_placeholder'); 
+    if (error) throw new Error(error.message);
   }
 };
 
+export const getServerStats = async (): Promise<{receiptCount: number, listCount: number}> => {
+  if (!supabase) return { receiptCount: 0, listCount: 0 };
+
+  // Check connection by doing a light count
+  const { count: receiptCount, error: rError } = await supabase
+    .from('receipts')
+    .select('*', { count: 'exact', head: true });
+
+  const { count: listCount, error: lError } = await supabase
+    .from('shopping_list')
+    .select('*', { count: 'exact', head: true });
+
+  if (rError || lError) {
+    return { receiptCount: 0, listCount: 0 };
+  }
+
+  return { 
+    receiptCount: receiptCount || 0, 
+    listCount: listCount || 0 
+  };
+};
+
+// --- PRICE HISTORY ---
+
 export const getItemHistory = async (query: string): Promise<PriceHistoryPoint[]> => {
-  const receipts = await getAllReceipts(); // This now handles the fallback logic internally
-  const history: PriceHistoryPoint[] = [];
+  if (!supabase) return [];
   
+  const { data: receipts, error } = await supabase
+    .from('receipts')
+    .select('storeName, date, items, createdAt');
+
+  if (error || !receipts) return [];
+
+  const history: PriceHistoryPoint[] = [];
   const lowerQuery = query.toLowerCase();
 
-  receipts.forEach(r => {
-    if (!r.items) return;
-    r.items.forEach(item => {
+  receipts.forEach((r: any) => {
+    if (!r.items || !Array.isArray(r.items)) return;
+    
+    r.items.forEach((item: any) => {
       if (item.name && item.name.toLowerCase().includes(lowerQuery)) {
         history.push({
           date: r.date || new Date(r.createdAt).toLocaleDateString(),
@@ -89,4 +144,36 @@ export const getItemHistory = async (query: string): Promise<PriceHistoryPoint[]
   });
 
   return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+};
+
+// --- SHOPPING LIST ---
+
+export const getShoppingList = async (): Promise<ShoppingItem[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('shopping_list')
+    .select('*')
+    .order('name', { ascending: true });
+
+  if (error) return [];
+  return data as ShoppingItem[];
+};
+
+export const saveShoppingItem = async (item: ShoppingItem): Promise<void> => {
+  const db = checkSupabase();
+  const { error } = await db
+    .from('shopping_list')
+    .upsert(item);
+  
+  if (error) throw new Error(error.message);
+};
+
+export const deleteShoppingItem = async (id: string): Promise<void> => {
+  const db = checkSupabase();
+  const { error } = await db
+    .from('shopping_list')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
 };

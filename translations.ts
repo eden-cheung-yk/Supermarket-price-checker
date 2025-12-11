@@ -7,73 +7,116 @@ export const translations = {
     nav: {
       home: "Home",
       scan: "Scan",
+      list: "List",
       price: "Price",
       history: "History",
       settings: "Set"
     },
     dashboard: {
-      overview: "Overview",
-      welcome: "Welcome back!",
-      province: "Province",
-      totalSpent: "Total Spent",
-      receipts: "Receipts",
-      spendingTrend: "Spending Trend",
-      weeklyDeals: "Weekly Flyer Shortcuts",
-      viewFlyers: "View Flyers",
-      dealsDesc: "Quick links to flyer aggregators for"
+      overview: "Dashboard",
+      welcome: "Financial Overview",
+      ranges: {
+        all: "All Time",
+        month: "This Month",
+        lastMonth: "Last Month",
+        year: "This Year"
+      },
+      cards: {
+        total: "Total Spent",
+        receipts: "Receipts Scanned",
+        dailyAvg: "Daily Average",
+        topStore: "Top Store"
+      },
+      charts: {
+        spending: "Spending Trend",
+        categories: "Category Allocation",
+        stores: "Store Spending Leaderboard"
+      },
+      restock: {
+        title: "Smart Restock",
+        desc: "Recommended items based on habit.",
+        add: "Add",
+        added: "Added",
+        empty: "No suggestions right now."
+      }
     },
     scanner: {
-      title: "Scan Receipt",
-      desc: "Use your camera to scan receipts. Processing is done locally using Tesseract OCR.",
+      title: "New Scan",
+      desc: "Capture receipt to analyze.",
       takePhoto: "Take Photo",
-      manual: "Enter Manually",
-      processing: "Processing Image...",
-      processingDesc: "Reading text locally...",
-      review: "Review Scan",
-      store: "Store",
+      upload: "Upload Image",
+      manual: "Manual Input",
+      processing: "Analyzing...",
+      processingDesc: "Extracting data via OCR...",
+      review: "Review Data",
+      store: "Merchant",
       date: "Date",
-      items: "Items Purchased",
-      addItem: "Add Item",
-      total: "Total Amount",
-      save: "Save Receipt",
-      back: "Back",
+      items: "Line Items",
+      addItem: "Add Line",
+      total: "Total",
+      save: "Save Record",
+      back: "Cancel",
       category: "Category",
-      selectCategory: "Select Category"
+      selectCategory: "Select..."
+    },
+    shoppingList: {
+      title: "Shopping List",
+      placeholder: "Add item...",
+      add: "Add",
+      empty: "List is empty",
+      clearCompleted: "Clean Up"
     },
     priceCheck: {
-      title: "Price Check",
-      desc: "Compare prices locally & across Canada.",
-      placeholder: "Product name (e.g. Milk)",
-      checkBtn: "Check Prices",
+      title: "Price Finder",
+      desc: "Compare local vs online.",
+      placeholder: "Search product...",
+      checkBtn: "Search",
       scanning: "Scanning...",
-      history: "Your Purchase History",
-      online: "Online Prices (Canada)",
-      noResults: "No results found.",
-      barcodeInstruction: "Point camera at a barcode"
+      history: "Local History",
+      online: "Online Matches",
+      noResults: "No matches found.",
+      barcodeInstruction: "Align Barcode",
+      recentSearches: "Recent",
+      clearHistory: "Clear"
     },
     history: {
-      title: "History",
-      desc: "Your past shopping trips.",
+      title: "Archives",
+      desc: "Manage past records.",
+      searchPlaceholder: "Search store, date, or price...",
       delete: "Delete",
-      noReceipts: "No receipts scanned yet."
+      noReceipts: "No records found.",
+      filters: {
+        all: "All Stores",
+        sortNew: "Newest First",
+        sortOld: "Oldest First",
+        sortHigh: "Highest Price",
+        sortLow: "Lowest Price"
+      }
     },
     settings: {
-      title: "Settings",
-      desc: "App configuration and guide.",
-      language: "Language / 語言",
-      categories: "Manage Categories",
-      addCategory: "Add Category",
+      title: "Preferences",
+      desc: "System configuration.",
+      language: "Language",
+      budget: "Monthly Target",
+      dataManagement: "Data",
+      exportCSV: "Export CSV",
+      clearData: "Reset Data",
+      clearAll: "Delete Everything",
+      clearGhost: "Cleanup Invalid",
+      confirmClear: "Are you sure? Irreversible.",
+      categories: "Categories",
+      addCategory: "New Category",
       editCategory: "Edit",
       deleteCategory: "Delete",
-      enterCategory: "Category name...",
-      status: "System Status",
-      guide: "User Guide",
+      enterCategory: "Name...",
+      status: "System Health",
+      guide: "Guide",
       guideScan: "1. Scanning",
-      guideScanDesc: "Uses Tesseract OCR to read text locally. Ensure good lighting.",
-      guidePrice: "2. Price Check",
-      guidePriceDesc: "Search your local history and online prices.",
-      guidePrivacy: "3. Privacy",
-      guidePrivacyDesc: "All data is stored on your NAS/Local device."
+      guideScanDesc: "Ensure good lighting for OCR accuracy.",
+      guidePrice: "2. Pricing",
+      guidePriceDesc: "Compare history with web prices.",
+      guidePrivacy: "3. Local Data",
+      guidePrivacyDesc: "Data stays on your device/NAS."
     }
   },
   zh: {
@@ -81,73 +124,116 @@ export const translations = {
     nav: {
       home: "首頁",
       scan: "掃描",
+      list: "清單",
       price: "格價",
       history: "記錄",
       settings: "設定"
     },
     dashboard: {
-      overview: "總覽",
-      welcome: "歡迎回來！",
-      province: "省份",
-      totalSpent: "總支出",
-      receipts: "收據數量",
-      spendingTrend: "支出趨勢",
-      weeklyDeals: "本週特價傳單",
-      viewFlyers: "查看傳單",
-      dealsDesc: "快速查看各大超市傳單："
+      overview: "數據總覽",
+      welcome: "財務分析",
+      ranges: {
+        all: "所有時間",
+        month: "本月",
+        lastMonth: "上月",
+        year: "本年"
+      },
+      cards: {
+        total: "總支出",
+        receipts: "收據總數",
+        dailyAvg: "日均消費",
+        topStore: "最高消費商戶"
+      },
+      charts: {
+        spending: "支出趨勢",
+        categories: "分類佔比",
+        stores: "商戶消費排行榜"
+      },
+      restock: {
+        title: "智能補貨",
+        desc: "根據習慣推薦。",
+        add: "加入",
+        added: "已加",
+        empty: "暫無建議"
+      }
     },
     scanner: {
       title: "掃描收據",
-      desc: "使用相機掃描。使用 Tesseract OCR 進行本地處理。",
-      takePhoto: "影相 / 上傳",
+      desc: "拍攝收據以進行分析。",
+      takePhoto: "拍照",
+      upload: "上傳圖片",
       manual: "手動輸入",
-      processing: "處理中...",
-      processingDesc: "正在辨識文字...",
+      processing: "分析中...",
+      processingDesc: "OCR 文字辨識進行中...",
       review: "核對資料",
-      store: "商店名稱",
+      store: "商店",
       date: "日期",
-      items: "購買項目",
+      items: "項目",
       addItem: "新增項目",
-      total: "總金額",
-      save: "儲存收據",
-      back: "返回",
+      total: "總額",
+      save: "儲存",
+      back: "取消",
       category: "分類",
-      selectCategory: "選擇分類"
+      selectCategory: "選擇..."
+    },
+    shoppingList: {
+      title: "購物清單",
+      placeholder: "輸入物品名稱...",
+      add: "新增",
+      empty: "清單是空的",
+      clearCompleted: "清除已完成"
     },
     priceCheck: {
       title: "格價助手",
-      desc: "比較本地歷史價格及網上價格。",
-      placeholder: "產品名稱 (例如: 牛奶)",
-      checkBtn: "查詢價格",
+      desc: "比較本地與網上價格。",
+      placeholder: "搜尋產品...",
+      checkBtn: "搜尋",
       scanning: "掃描中...",
-      history: "你的購買記錄",
-      online: "網上價格 (加拿大)",
-      noResults: "找不到結果。",
-      barcodeInstruction: "將鏡頭對準條碼"
+      history: "本地記錄",
+      online: "網上價格",
+      noResults: "沒有結果。",
+      barcodeInstruction: "對準條碼",
+      recentSearches: "最近",
+      clearHistory: "清除"
     },
     history: {
-      title: "購物記錄",
-      desc: "你之前的購物單據。",
+      title: "歷史檔案",
+      desc: "管理過往記錄。",
+      searchPlaceholder: "搜尋商店、日期或金額...",
       delete: "刪除",
-      noReceipts: "暫無收據。"
+      noReceipts: "沒有記錄。",
+      filters: {
+        all: "所有商店",
+        sortNew: "最新",
+        sortOld: "最舊",
+        sortHigh: "金額 (高至低)",
+        sortLow: "金額 (低至高)"
+      }
     },
     settings: {
       title: "設定",
-      desc: "系統設定及教學。",
-      language: "語言 / Language",
-      categories: "管理分類",
+      desc: "系統偏好設定。",
+      language: "語言",
+      budget: "每月預算目標",
+      dataManagement: "數據管理",
+      exportCSV: "匯出 CSV",
+      clearData: "重置數據",
+      clearAll: "刪除所有",
+      clearGhost: "清理無效數據",
+      confirmClear: "確定？此操作無法還原。",
+      categories: "分類管理",
       addCategory: "新增分類",
       editCategory: "編輯",
       deleteCategory: "刪除",
-      enterCategory: "分類名稱...",
+      enterCategory: "名稱...",
       status: "系統狀態",
-      guide: "使用教學",
-      guideScan: "1. 掃描單據",
-      guideScanDesc: "使用 Tesseract OCR 本地辨識。請確保光線充足。",
-      guidePrice: "2. 格價功能",
-      guidePriceDesc: "同時搜尋你的歷史記錄及網上價格。",
-      guidePrivacy: "3. 私隱",
-      guidePrivacyDesc: "所有資料儲存於你的 NAS 或本地裝置。"
+      guide: "使用指南",
+      guideScan: "1. 掃描",
+      guideScanDesc: "確保光線充足。",
+      guidePrice: "2. 格價",
+      guidePriceDesc: "比較歷史與網絡價格。",
+      guidePrivacy: "3. 隱私",
+      guidePrivacyDesc: "數據僅儲存於本地/NAS。"
     }
   }
 };

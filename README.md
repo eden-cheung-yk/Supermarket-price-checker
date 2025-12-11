@@ -1,157 +1,80 @@
-# SmartPrice Tracker 🛒
+# SmartPrice Tracker (Supabase + Vercel)
 
-**SmartPrice** is a self-hosted grocery price tracker designed for privacy and offline capability. It allows you to scan receipts, track spending, and compare prices across Canadian retailers without relying on external cloud APIs.
-
-## ✨ Features
-*   **Privacy First:** Data lives on your NAS in a local SQLite database (`smartprice.db`).
-*   **Offline OCR:** Uses Tesseract.js to read receipts locally in your browser.
-*   **Smart Scanning:** Detects store names, dates, and parses items with quantity support.
-*   **Category Management:** Organize items by custom categories (Produce, Dairy, Snacks, etc.).
-*   **Price Check:** Scan barcodes to compare against your purchase history and online retailers.
-*   **Dashboard:** Visual spending trends and shortcuts to provincial flyers.
+This application is a grocery price tracker and shopping list that syncs to the cloud using Supabase.
 
 ---
 
-## ⚠️ Important: Mobile Camera Access
-**Please read this before installing!**
-Browsers (Chrome, Safari, Firefox) **block camera access** on websites that do not use HTTPS, unless the website is `localhost`.
-Since your NAS likely uses a local IP (e.g., `http://192.168.1.50:3000`), the scanner might not open on your phone.
+## 🛠️ Supabase Database Setup (Required)
 
-**Solutions:**
-1.  **Reverse Proxy (Recommended):** Set up a reverse proxy (like Nginx Proxy Manager or Synology's Built-in Reverse Proxy) to serve the app with an SSL certificate (HTTPS).
-2.  **Chrome Flags (Quick Fix):** On your Android phone, go to `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, enter `http://YOUR-NAS-IP:3000`, enable it, and restart Chrome.
-3.  **Firefox:** Firefox on Android sometimes allows camera on HTTP if you grant permission explicitly.
+To make the app work, you must create the tables in Supabase. Because the app sends data with mixed-case keys (like `storeName`), we need to create the tables using **quotes** to preserve case sensitivity in PostgreSQL.
 
----
+### 1. Create Project
+1.  Go to [Supabase.com](https://supabase.com) and sign up.
+2.  Click **New Project**.
+3.  Give it a name (e.g., "SmartPrice") and a secure password.
 
-## 📦 Method 1: Docker (Detailed Guide)
+### 2. Run SQL Schema
+1.  Once your project is created, click on the **SQL Editor** icon in the left sidebar (looks like a terminal `>_`).
+2.  Click **New Query**.
+3.  **Copy and Paste** the code block below exactly as is:
 
-This guide assumes you are using a Synology NAS, but it applies to QNAP or any Linux server.
+```sql
+-- 1. Create Receipts Table
+-- We use quotes " " to ensure column names match the JavaScript JSON keys exactly.
+create table receipts (
+  id text primary key,
+  "storeName" text,
+  "date" text,
+  "totalAmount" numeric,
+  "items" jsonb,
+  "rawText" text,
+  "createdAt" bigint
+);
 
-### Phase 1: Prepare Files on Your Computer
-Before uploading to the NAS, organize the files on your desktop.
+-- 2. Create Shopping List Table
+create table shopping_list (
+  id text primary key,
+  "name" text,
+  "isChecked" boolean
+);
 
-1.  Create a main folder named **`smartprice`**.
-2.  Inside `smartprice`, create two sub-folders:
-    *   `components`
-    *   `services`
-3.  Save the code files into the correct locations:
+-- 3. Enable Public Access (Row Level Security)
+-- This allows the app to Read/Write without requiring a user login system.
+-- (Safe for personal use, but anyone with your API Key can edit data)
 
-    **In the main `smartprice/` folder:**
-    *   `Dockerfile`
-    *   `docker-compose.yml`
-    *   `package.json`
-    *   `server.js`
-    *   `index.html`
-    *   `index.tsx`
-    *   `App.tsx`
-    *   `types.ts`
-    *   `translations.ts`
-    *   `vite.config.ts`
-    *   `tsconfig.json`
-    *   `tsconfig.node.json`
-    *   `metadata.json`
+alter table receipts enable row level security;
+create policy "Public Access Receipts" on receipts for all using (true) with check (true);
 
-    **In the `smartprice/components/` folder:**
-    *   `NavBar.tsx`
-    *   `Scanner.tsx`
-    *   `Dashboard.tsx`
-    *   `History.tsx`
-    *   `PriceCheck.tsx`
+alter table shopping_list enable row level security;
+create policy "Public Access List" on shopping_list for all using (true) with check (true);
+```
 
-    **In the `smartprice/services/` folder:**
-    *   `db.ts`
-    *   `gemini.ts`
-    *   `ocr.ts`
-    *   `utils.ts`
+4.  Click **Run** (bottom right). You should see "Success".
 
-### Phase 2: Upload to NAS
-
-#### Option A: Synology File Station (Easiest)
-1.  Log in to your Synology DSM Web Interface.
-2.  Open **File Station**.
-3.  Navigate to your `docker` shared folder (create one if it doesn't exist).
-4.  Drag and drop the entire **`smartprice`** folder from your computer into the File Station window.
-5.  You should now have `/docker/smartprice` containing all your files.
-
-#### Option B: Network Share (SMB)
-1.  On Windows (`Win+R` -> `\\YOUR-NAS-IP`) or Mac (`Cmd+K` -> `smb://YOUR-NAS-IP`), connect to your NAS.
-2.  Open the `docker` folder.
-3.  Copy/Paste the `smartprice` folder from your desktop into the network drive.
-
-### Phase 3: Run the Container
-
-You need to run the `docker-compose` command. You can do this via SSH or Task Scheduler.
-
-#### Option A: Via SSH (Terminal)
-1.  Enable SSH on your Synology (Control Panel -> Terminal & SNMP -> Enable SSH service).
-2.  Open Terminal (Mac) or PowerShell (Windows).
-3.  Connect: `ssh your_username@YOUR-NAS-IP`
-4.  Navigate to the folder:
-    ```bash
-    cd /volume1/docker/smartprice
-    ```
-5.  Start the app:
-    ```bash
-    sudo docker-compose up -d --build
-    ```
-    *(Enter your password if prompted. Note: The build process might take 2-5 minutes the first time).*
-
-#### Option B: Via Synology Task Scheduler (No SSH required)
-1.  Go to **Control Panel** -> **Task Scheduler**.
-2.  Create -> **Scheduled Task** -> **User-defined script**.
-3.  **General Tab:**
-    *   Task: "Install SmartPrice"
-    *   User: `root` (Important!)
-    *   Uncheck "Enabled" (we only want to run it manually once).
-4.  **Task Settings Tab:**
-    *   User-defined script:
-        ```bash
-        cd /volume1/docker/smartprice
-        docker-compose up -d --build
-        ```
-5.  Click OK.
-6.  Select the task in the list and click **Run**.
-7.  Wait 5 minutes, then check if the app is running.
+### 3. Get API Keys
+1.  Go to **Project Settings** (Cog icon at the bottom of the sidebar).
+2.  Click **API**.
+3.  Copy the **Project URL**.
+4.  Copy the **anon / public** Key.
 
 ---
 
-## 🔄 How to Update (Method 1)
+## 🚀 Deployment (Vercel)
 
-If you download a new version of the code from GitHub in the future, follow these steps to update your NAS without losing data.
-
-1.  **Download New Code:** Download the updated files to your computer.
-2.  **Stop the App:**
-    *   Via SSH: `cd /volume1/docker/smartprice && sudo docker-compose down`
-    *   *OR* Via Synology Container Manager: Stop the `smartprice` container.
-3.  **Upload & Overwrite:**
-    *   Open Synology File Station.
-    *   Drag the new code files into `/docker/smartprice`.
-    *   **IMPORTANT:** Select **"Overwrite"** or **"Replace"**.
-    *   **CRITICAL:** Do **NOT** delete or overwrite the `data` folder. That is where your database lives. Just overwrite the `.tsx`, `.js`, `.json` and `.yml` files.
-4.  **Rebuild:**
-    *   Run the same command as Phase 3 (SSH or Task Scheduler):
-    *   `sudo docker-compose up -d --build`
-    *   This forces Docker to re-compile the app with the new code.
+1.  Upload this code to GitHub.
+2.  Go to [Vercel.com](https://vercel.com) and create a new project from your GitHub repo.
+3.  In the **Environment Variables** section, add:
+    *   `VITE_SUPABASE_URL`: (Your Project URL)
+    *   `VITE_SUPABASE_ANON_KEY`: (Your anon Key)
+4.  Deploy!
 
 ---
 
-## 📂 Data Backup
-Your data is stored safely on your NAS because of the volume mapping in `docker-compose.yml`.
+## ⚠️ Troubleshooting
 
-*   **Location:** `/docker/smartprice/data/smartprice.db`
-*   **To Backup:** Simply copy the `smartprice.db` file to another location.
-*   **To Restore:** Stop the container (`docker-compose down`), replace the `.db` file, and start it again.
+**"Uncaught TypeError: Cannot read properties of undefined..."**
+*   This usually happens in local preview environments that don't support `import.meta.env`.
+*   The code includes a safe check, so if you see this, ensure you are running via `npm run dev` (Vite) or deployed on Vercel.
 
----
-
-## ❓ Troubleshooting
-
-**Q: The camera screen is black.**
-A: See the "Important: Mobile Camera Access" section at the top. You need HTTPS or localhost.
-
-**Q: "Build failed" or "npm error".**
-A: Make sure you copied ALL the files listed in Phase 1. Missing `tsconfig.json` or `vite.config.ts` will cause the build to fail.
-
-**Q: Permissions errors.**
-A: Ensure the user running Docker has read/write access to the `smartprice` folder. Using `sudo` or the `root` user in Task Scheduler usually solves this.
+**"Table not found" or Data not saving**
+*   Check your Supabase **RLS Policies**. Ensure you ran the SQL step 3 above ("Public Access"). If RLS is on but no policy exists, Supabase blocks all writes by default.

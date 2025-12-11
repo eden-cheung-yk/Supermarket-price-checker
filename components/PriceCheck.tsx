@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Barcode, Search, ShoppingCart, ExternalLink, Loader2, X, ScanLine } from 'lucide-react';
+import { Barcode, Search, ShoppingCart, ExternalLink, Loader2, X, ScanLine, Clock, Trash2 } from 'lucide-react';
 import { identifyProductFromBarcode, findOnlinePrices } from '../services/gemini';
 import { getItemHistory } from '../services/db';
 import { PriceHistoryPoint, OnlinePrice } from '../types';
@@ -19,8 +20,21 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
   const [localHistory, setLocalHistory] = useState<PriceHistoryPoint[]>([]);
   const [onlinePrices, setOnlinePrices] = useState<OnlinePrice[]>([]);
   const [status, setStatus] = useState('');
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
   
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+
+  // Load History on Mount
+  useEffect(() => {
+    const saved = localStorage.getItem('smartprice_search_history');
+    if (saved) {
+      try {
+        setSearchHistory(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to load search history");
+      }
+    }
+  }, []);
 
   // Handle Barcode Scanning
   useEffect(() => {
@@ -84,12 +98,28 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
     }
   }, [mode]);
 
+  const updateSearchHistory = (term: string) => {
+    if (!term) return;
+    const newHistory = [term, ...searchHistory.filter(h => h !== term)].slice(0, 8);
+    setSearchHistory(newHistory);
+    localStorage.setItem('smartprice_search_history', JSON.stringify(newHistory));
+  };
+
+  const clearSearchHistory = () => {
+    setSearchHistory([]);
+    localStorage.removeItem('smartprice_search_history');
+  };
+
   const handleSearch = async (term: string) => {
     if (!term) return;
     setLoading(true);
     setStatus(t.scanning);
     setOnlinePrices([]);
     setLocalHistory([]);
+    setSearchTerm(term);
+    
+    // Save to history
+    updateSearchHistory(term);
     
     try {
         // 1. Search Local DB (Privacy first)
@@ -147,6 +177,34 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
             {loading ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
             {loading ? t.scanning : t.checkBtn}
           </button>
+      )}
+
+      {/* Recent Searches */}
+      {mode === 'search' && !loading && searchHistory.length > 0 && (
+        <div className="animate-fadeIn">
+            <div className="flex justify-between items-center mb-2">
+                <h3 className="text-sm font-bold text-gray-500 uppercase flex items-center gap-1">
+                    <Clock size={14} /> {t.recentSearches}
+                </h3>
+                <button 
+                    onClick={clearSearchHistory}
+                    className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
+                >
+                    <Trash2 size={12} /> {t.clearHistory}
+                </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+                {searchHistory.map((term, idx) => (
+                    <button
+                        key={idx}
+                        onClick={() => handleSearch(term)}
+                        className="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-green-50 hover:text-primary hover:border-green-200 transition-colors shadow-sm"
+                    >
+                        {term}
+                    </button>
+                ))}
+            </div>
+        </div>
       )}
 
       {/* Scanner View UI */}

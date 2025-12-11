@@ -17,12 +17,19 @@ export interface Receipt {
   createdAt: number;
 }
 
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  isChecked: boolean;
+}
+
 export enum ViewState {
   DASHBOARD = 'DASHBOARD',
   SCANNER = 'SCANNER',
   HISTORY = 'HISTORY',
   PRICE_CHECK = 'PRICE_CHECK',
-  SETTINGS = 'SETTINGS'
+  SETTINGS = 'SETTINGS',
+  SHOPPING_LIST = 'SHOPPING_LIST'
 }
 
 export interface PriceHistoryPoint {
