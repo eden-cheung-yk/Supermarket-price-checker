@@ -16,7 +16,8 @@ To make the app work, you must create the tables in Supabase. Because the app se
 ### 2. Run SQL Schema
 1.  Once your project is created, click on the **SQL Editor** icon in the left sidebar (looks like a terminal `>_`).
 2.  Click **New Query**.
-3.  **Copy and Paste** the code block below exactly as is:
+3.  **Copy and Paste** the code block below exactly as is. 
+    > **Note:** The quotes around `"storeName"` and other fields are crucial. Do not remove them.
 
 ```sql
 -- 1. Create Receipts Table
@@ -78,3 +79,4 @@ create policy "Public Access List" on shopping_list for all using (true) with ch
 
 **"Table not found" or Data not saving**
 *   Check your Supabase **RLS Policies**. Ensure you ran the SQL step 3 above ("Public Access"). If RLS is on but no policy exists, Supabase blocks all writes by default.
+*   Ensure you included the quotes in the SQL when creating tables (e.g., `"storeName"`), otherwise Postgres creates them as lowercase (`storename`), breaking the app's case-sensitive queries.

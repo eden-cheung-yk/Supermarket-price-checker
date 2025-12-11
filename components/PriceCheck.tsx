@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Barcode, Search, ShoppingCart, ExternalLink, Loader2, X, ScanLine, Clock, Trash2 } from 'lucide-react';
+import { ScanBarcode, Search, ShoppingCart, ExternalLink, Loader2, X, ScanLine, Clock, Trash2 } from 'lucide-react';
 import { identifyProductFromBarcode, findOnlinePrices } from '../services/gemini';
 import { getItemHistory } from '../services/db';
 import { PriceHistoryPoint, OnlinePrice } from '../types';
@@ -163,7 +162,7 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
             className={`p-3 rounded-xl border transition-all shadow-sm flex-shrink-0 ${mode === 'scan' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:border-primary hover:text-primary'}`}
             title={mode === 'scan' ? "Close Scanner" : "Scan Barcode"}
         >
-            {mode === 'scan' ? <X size={24} /> : <Barcode size={24} />}
+            {mode === 'scan' ? <X size={24} /> : <ScanBarcode size={24} />}
         </button>
       </div>
 
