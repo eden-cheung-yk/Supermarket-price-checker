@@ -123,7 +123,8 @@ export const getItemHistory = async (query: string): Promise<PriceHistoryPoint[]
   
   const { data: receipts, error } = await supabase
     .from('receipts')
-    .select('storeName, date, items, createdAt');
+    .select('id, storeName, date, items, createdAt')
+    .order('date', { ascending: false }); // Ensure DB returns sorted
 
   if (error || !receipts) return [];
 
@@ -140,14 +141,17 @@ export const getItemHistory = async (query: string): Promise<PriceHistoryPoint[]
 
       if (nameMatch || barcodeMatch) {
         history.push({
+          id: r.id,
           date: r.date || new Date(r.createdAt).toLocaleDateString(),
           store: r.storeName,
-          price: item.price
+          price: item.price,
+          itemName: item.name
         });
       }
     });
   });
 
+  // Client-side sort to be double sure
   return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 

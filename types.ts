@@ -34,9 +34,11 @@ export enum ViewState {
 }
 
 export interface PriceHistoryPoint {
+  id: string; // Receipt ID for keying
   date: string;
   price: number;
   store: string;
+  itemName: string; // The specific name used in that receipt
 }
 
 export interface OnlinePrice {

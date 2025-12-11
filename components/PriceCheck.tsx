@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { ScanBarcode, Search, ShoppingCart, ExternalLink, Loader2, X, ScanLine, Clock, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { ScanBarcode, Search, ShoppingCart, ExternalLink, Loader2, X, ScanLine, Clock, Trash2, TrendingDown, TrendingUp, Minus, Award, Calendar } from 'lucide-react';
 import { identifyProductFromBarcode, findOnlinePrices } from '../services/gemini';
 import { getItemHistory } from '../services/db';
 import { PriceHistoryPoint, OnlinePrice } from '../types';
@@ -39,13 +39,10 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
   // Handle Barcode Scanning
   useEffect(() => {
     if (mode === 'scan') {
-      // Small delay to ensure DOM element exists before mounting scanner
       const timer = setTimeout(() => {
-        // Prevent double mounting
         if (scannerRef.current) return;
 
         const onScanSuccess = async (decodedText: string) => {
-          // Stop scanning immediately upon success
           if (scannerRef.current) {
               try {
                   await scannerRef.current.clear();
@@ -59,25 +56,16 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
 
           try {
              // 1. Try Local History First (Exact Match on Barcode)
-             // The db function now checks both name and barcode
              const history = await getItemHistory(decodedText);
              
              let productName = decodedText;
              
-             // If we have history for this barcode, use the most recent name
-             if (history.length > 0) {
-                 // The history items don't store the name directly in the return type, 
-                 // but if we got results, it means we found the item.
-                 // We will still fetch the name from OpenFoodFacts for the UI display/Online Search
-             }
-
-            // 2. Identify product using OpenFoodFacts (for display Name)
-            productName = await identifyProductFromBarcode(decodedText);
-            setSearchTerm(productName);
-            
-            // 3. Trigger full search (Local + Online)
-            // If local history was empty for barcode, we now search by the name we found
-            handleSearch(productName, decodedText); // Pass barcode as secondary key
+             // 2. Identify product using OpenFoodFacts
+             productName = await identifyProductFromBarcode(decodedText);
+             setSearchTerm(productName);
+             
+             // 3. Trigger full search (Local + Online)
+             handleSearch(productName, decodedText);
 
           } catch (error) {
             setStatus('Error identifying product.');
@@ -96,7 +84,7 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
         scannerRef.current = scanner;
 
         scanner.render(onScanSuccess, (errorMessage: any) => {
-            // parse errors are common in video streams, ignore them to keep console clean
+            // ignore scan errors
         });
       }, 100);
 
@@ -132,29 +120,22 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
     setLocalHistory([]);
     setSearchTerm(term);
     
-    // Save to history
     updateSearchHistory(term);
     
     try {
-        // 1. Search Local DB 
-        // We search by Name first. If barcodeContext is provided, we search that separately and merge?
-        // Actually, getItemHistory now handles barcode OR name.
-        // If we scanned a barcode, 'barcodeContext' is the code. 
-        // We should query that first to get exact matches.
-        
         let history = [];
+        // Prioritize barcode search
         if (barcodeContext) {
             history = await getItemHistory(barcodeContext);
         }
         
-        // If barcode didn't yield results (or wasn't provided), search by text name
+        // If no barcode or no results, search text
         if (history.length === 0) {
             history = await getItemHistory(term);
         }
         
         setLocalHistory(history);
 
-        // 2. Get Online Search Links (Open Web) - Always use text name for this
         const online = await findOnlinePrices(term);
         setOnlinePrices(online);
     } catch (e) {
@@ -166,6 +147,25 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
     }
   };
 
+  // --- ANALYTICS CALCULATIONS ---
+  const stats = useMemo(() => {
+    if (localHistory.length === 0) return null;
+    const prices = localHistory.map(h => h.price);
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const sum = prices.reduce((a, b) => a + b, 0);
+    const avg = sum / prices.length;
+    return { min, max, avg };
+  }, [localHistory]);
+
+  const getPriceBadge = (price: number) => {
+      if (!stats) return null;
+      if (price === stats.min) return { label: 'Best Price', color: 'bg-green-100 text-green-700', icon: <Award size={12}/> };
+      if (price < stats.avg) return { label: 'Low', color: 'bg-green-50 text-green-600', icon: <TrendingDown size={12}/> };
+      if (price > stats.avg) return { label: 'High', color: 'bg-red-50 text-red-600', icon: <TrendingUp size={12}/> };
+      return { label: 'Average', color: 'bg-gray-100 text-gray-600', icon: <Minus size={12}/> };
+  };
+
   return (
     <div className="p-4 pb-24 max-w-2xl mx-auto space-y-6">
       <header>
@@ -174,13 +174,13 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
       </header>
 
       {/* Search Input Bar */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 sticky top-2 z-30">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input 
             type="text" 
             placeholder={t.placeholder}
-            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-primary focus:ring-2 focus:ring-green-100 outline-none transition-all shadow-sm"
+            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-primary focus:ring-2 focus:ring-green-100 outline-none transition-all shadow-lg shadow-gray-100"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchTerm)}
@@ -188,7 +188,7 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
         </div>
         <button 
             onClick={() => setMode(mode === 'scan' ? 'search' : 'scan')}
-            className={`p-3 rounded-xl border transition-all shadow-sm flex-shrink-0 ${mode === 'scan' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:border-primary hover:text-primary'}`}
+            className={`p-3 rounded-xl border transition-all shadow-lg shadow-gray-100 flex-shrink-0 ${mode === 'scan' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:border-primary hover:text-primary'}`}
             title={mode === 'scan' ? "Close Scanner" : "Scan Barcode"}
         >
             {mode === 'scan' ? <X size={24} /> : <ScanBarcode size={24} />}
@@ -208,16 +208,13 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
       )}
 
       {/* Recent Searches */}
-      {mode === 'search' && !loading && searchHistory.length > 0 && (
+      {mode === 'search' && !loading && !localHistory.length && searchHistory.length > 0 && (
         <div className="animate-fadeIn">
             <div className="flex justify-between items-center mb-2">
                 <h3 className="text-sm font-bold text-gray-500 uppercase flex items-center gap-1">
                     <Clock size={14} /> {t.recentSearches}
                 </h3>
-                <button 
-                    onClick={clearSearchHistory}
-                    className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
-                >
+                <button onClick={clearSearchHistory} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1">
                     <Trash2 size={12} /> {t.clearHistory}
                 </button>
             </div>
@@ -240,20 +237,11 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
           <div className="relative animate-fadeIn">
               <div className="bg-black rounded-2xl overflow-hidden shadow-2xl border-4 border-gray-800">
                   <div id="reader" className="w-full min-h-[350px] bg-black"></div>
-                  
-                  {/* Scanner Overlay UI */}
                   <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent text-white z-10">
                       <div className="flex items-center gap-2 justify-center">
                           <ScanLine className="animate-pulse text-green-400" />
                           <span className="font-bold tracking-wide">SCANNER ACTIVE</span>
                       </div>
-                  </div>
-
-                  <div className="bg-gray-900 text-white p-6 text-center border-t border-gray-800">
-                    <p className="font-bold text-lg mb-2 text-green-400">{t.barcodeInstruction}</p>
-                    <p className="text-sm text-gray-400 max-w-xs mx-auto">
-                        Align the barcode within the box. Ensure the room is well lit.
-                    </p>
                   </div>
               </div>
           </div>
@@ -270,36 +258,90 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
       {!loading && mode === 'search' && (localHistory.length > 0 || onlinePrices.length > 0) && (
         <div className="space-y-6 animate-fadeIn">
             
-            {/* 1. Local History Chart */}
-            {localHistory.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                    <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                        <ShoppingCart size={20} className="text-blue-500" /> {t.history}
-                    </h3>
-                    <div className="h-56">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={localHistory.slice(0, 6).reverse()}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                                <XAxis dataKey="date" fontSize={11} tickMargin={5} stroke="#9ca3af" />
-                                <YAxis domain={['auto', 'auto']} fontSize={11} width={30} stroke="#9ca3af" />
-                                <Tooltip 
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                                    cursor={{ fill: '#f3f4f6' }}
-                                />
-                                <Bar dataKey="price" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Price ($)" barSize={32} />
-                            </BarChart>
-                        </ResponsiveContainer>
+            {/* 1. Price Analytics Summary */}
+            {stats && (
+                <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center">
+                        <div className="text-xs text-green-600 font-bold uppercase">Lowest</div>
+                        <div className="text-xl font-black text-green-700">${stats.min.toFixed(2)}</div>
                     </div>
-                    <div className="mt-4 pt-3 border-t border-gray-50 text-sm text-gray-600 flex justify-between items-center">
-                        <span>Last paid:</span>
-                        <span className="font-bold text-gray-900 bg-blue-50 px-2 py-1 rounded text-base">
-                            ${localHistory[0].price.toFixed(2)}
-                        </span>
+                    <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-center">
+                        <div className="text-xs text-blue-600 font-bold uppercase">Average</div>
+                        <div className="text-xl font-black text-blue-700">${stats.avg.toFixed(2)}</div>
+                    </div>
+                    <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center">
+                        <div className="text-xs text-red-600 font-bold uppercase">Highest</div>
+                        <div className="text-xl font-black text-red-700">${stats.max.toFixed(2)}</div>
                     </div>
                 </div>
             )}
 
-            {/* 2. Online Comparison Links */}
+            {/* 2. Detailed History List */}
+            {localHistory.length > 0 && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                         <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                            <ShoppingCart size={20} className="text-blue-500" /> {t.history}
+                        </h3>
+                        <span className="text-xs font-bold bg-white border px-2 py-1 rounded text-gray-500">
+                            {localHistory.length} records
+                        </span>
+                    </div>
+                    
+                    <div className="divide-y divide-gray-100">
+                        {localHistory.map((item, idx) => {
+                            const badge = getPriceBadge(item.price);
+                            return (
+                                <div key={`${item.id}-${idx}`} className="p-4 hover:bg-gray-50 transition-colors">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <div className="font-bold text-gray-800">{item.store}</div>
+                                            <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                                                <Calendar size={12} /> {item.date}
+                                            </div>
+                                            <div className="text-xs text-gray-400 mt-1 italic max-w-[200px] truncate">
+                                                {item.itemName}
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-xl font-black text-gray-900">
+                                                ${item.price.toFixed(2)}
+                                            </div>
+                                            {badge && (
+                                                <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 mt-1 ${badge.color}`}>
+                                                    {badge.icon} {badge.label}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+            
+            {/* 3. Trend Chart (Collapsible or Secondary) */}
+            {localHistory.length > 1 && (
+                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 className="text-sm font-bold text-gray-500 mb-4">Price Trend</h3>
+                    <div className="h-40">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={localHistory.slice(0, 10).reverse()}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                <XAxis dataKey="date" fontSize={10} tickMargin={5} stroke="#9ca3af" />
+                                <Tooltip 
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                                    cursor={{ fill: '#f3f4f6' }}
+                                />
+                                <Bar dataKey="price" fill="#3b82f6" radius={[4, 4, 4, 4]} barSize={20} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            )}
+
+            {/* 4. Online Comparison Links */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                     <ExternalLink size={20} className="text-green-500" /> {t.online}
