@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { ScanBarcode, Search, ShoppingCart, ExternalLink, Loader2, X, ScanLine, Clock, Trash2 } from 'lucide-react';
 import { identifyProductFromBarcode, findOnlinePrices } from '../services/gemini';
@@ -54,19 +55,33 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
           
           setStatus(`${t.scanning} ${decodedText}...`);
           setLoading(true);
-          
+          setMode('search');
+
           try {
-            // Identify product using OpenFoodFacts
-            const productName = await identifyProductFromBarcode(decodedText);
+             // 1. Try Local History First (Exact Match on Barcode)
+             // The db function now checks both name and barcode
+             const history = await getItemHistory(decodedText);
+             
+             let productName = decodedText;
+             
+             // If we have history for this barcode, use the most recent name
+             if (history.length > 0) {
+                 // The history items don't store the name directly in the return type, 
+                 // but if we got results, it means we found the item.
+                 // We will still fetch the name from OpenFoodFacts for the UI display/Online Search
+             }
+
+            // 2. Identify product using OpenFoodFacts (for display Name)
+            productName = await identifyProductFromBarcode(decodedText);
             setSearchTerm(productName);
-            setMode('search'); // Switch UI back to results view
             
-            // Automatically trigger price check
-            handleSearch(productName);
+            // 3. Trigger full search (Local + Online)
+            // If local history was empty for barcode, we now search by the name we found
+            handleSearch(productName, decodedText); // Pass barcode as secondary key
+
           } catch (error) {
             setStatus('Error identifying product.');
             setLoading(false);
-            setMode('search');
           }
         };
 
@@ -109,7 +124,7 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
     localStorage.removeItem('smartprice_search_history');
   };
 
-  const handleSearch = async (term: string) => {
+  const handleSearch = async (term: string, barcodeContext?: string) => {
     if (!term) return;
     setLoading(true);
     setStatus(t.scanning);
@@ -121,11 +136,25 @@ export const PriceCheck: React.FC<PriceCheckProps> = ({ lang }) => {
     updateSearchHistory(term);
     
     try {
-        // 1. Search Local DB (Privacy first)
-        const history = await getItemHistory(term);
+        // 1. Search Local DB 
+        // We search by Name first. If barcodeContext is provided, we search that separately and merge?
+        // Actually, getItemHistory now handles barcode OR name.
+        // If we scanned a barcode, 'barcodeContext' is the code. 
+        // We should query that first to get exact matches.
+        
+        let history = [];
+        if (barcodeContext) {
+            history = await getItemHistory(barcodeContext);
+        }
+        
+        // If barcode didn't yield results (or wasn't provided), search by text name
+        if (history.length === 0) {
+            history = await getItemHistory(term);
+        }
+        
         setLocalHistory(history);
 
-        // 2. Get Online Search Links (Open Web)
+        // 2. Get Online Search Links (Open Web) - Always use text name for this
         const online = await findOnlinePrices(term);
         setOnlinePrices(online);
     } catch (e) {

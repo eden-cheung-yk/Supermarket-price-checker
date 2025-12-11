@@ -1,5 +1,6 @@
+
 import { createClient } from '@supabase/supabase-js';
-import { Receipt, PriceHistoryPoint, ShoppingItem } from '../types';
+import { Receipt, PriceHistoryPoint, ShoppingItem, ProductItem } from '../types';
 
 // --- SUPABASE CONFIG ---
 // Safely access env variables to prevent crashes in environments where import.meta.env is undefined
@@ -133,7 +134,11 @@ export const getItemHistory = async (query: string): Promise<PriceHistoryPoint[]
     if (!r.items || !Array.isArray(r.items)) return;
     
     r.items.forEach((item: any) => {
-      if (item.name && item.name.toLowerCase().includes(lowerQuery)) {
+      // Check Name OR Barcode
+      const nameMatch = item.name && item.name.toLowerCase().includes(lowerQuery);
+      const barcodeMatch = item.barcode && item.barcode === query;
+
+      if (nameMatch || barcodeMatch) {
         history.push({
           date: r.date || new Date(r.createdAt).toLocaleDateString(),
           store: r.storeName,
@@ -144,6 +149,32 @@ export const getItemHistory = async (query: string): Promise<PriceHistoryPoint[]
   });
 
   return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+};
+
+/**
+ * Finds the most recent usage of a specific barcode to auto-fill details
+ */
+export const getProductByBarcode = async (barcode: string): Promise<{name: string, category: string} | null> => {
+  if (!supabase || !barcode) return null;
+
+  const { data: receipts } = await supabase
+    .from('receipts')
+    .select('items, date')
+    .order('date', { ascending: false })
+    .limit(50); // Search last 50 receipts
+
+  if (!receipts) return null;
+
+  for (const r of receipts) {
+    if (r.items && Array.isArray(r.items)) {
+      const match = r.items.find((i: ProductItem) => i.barcode === barcode);
+      if (match && match.name) {
+        return { name: match.name, category: match.category || '' };
+      }
+    }
+  }
+
+  return null;
 };
 
 // --- SHOPPING LIST ---

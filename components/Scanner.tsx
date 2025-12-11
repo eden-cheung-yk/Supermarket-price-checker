@@ -1,10 +1,12 @@
 
-import React, { useState, useRef } from 'react';
-import { Camera, X, Check, Plus, Trash2, Keyboard, Sparkles, Upload, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Camera, X, Check, Plus, Trash2, Keyboard, Sparkles, Upload, AlertCircle, Loader2, ScanBarcode, Calculator } from 'lucide-react';
 import { processReceiptWithOCR } from '../services/ocr';
 import { Receipt, ProductItem } from '../types';
 import { translations, Language } from '../translations';
 import { generateId } from '../services/utils';
+import { Html5QrcodeScanner } from 'html5-qrcode';
+import { getProductByBarcode } from '../services/db';
 
 interface ScannerProps {
   onSave: (receipt: Receipt) => Promise<void>;
@@ -22,8 +24,67 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang, catego
   const [parsedData, setParsedData] = useState<Partial<Receipt> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   
+  // Barcode Scanner State
+  const [activeBarcodeIndex, setActiveBarcodeIndex] = useState<number | null>(null);
+  const barcodeScannerRef = useRef<Html5QrcodeScanner | null>(null);
+  
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  // --- BARCODE SCANNER EFFECT ---
+  useEffect(() => {
+    if (activeBarcodeIndex !== null) {
+        // Small delay to let the modal render the div
+        const timeout = setTimeout(() => {
+            if (barcodeScannerRef.current) return;
+            
+            const onScanSuccess = async (decodedText: string) => {
+                if (barcodeScannerRef.current) {
+                    try { await barcodeScannerRef.current.clear(); } catch(e){}
+                    barcodeScannerRef.current = null;
+                }
+
+                // Update Item with Barcode
+                await handleBarcodeDetected(activeBarcodeIndex, decodedText);
+                setActiveBarcodeIndex(null);
+            };
+
+            const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+            const scanner = new Html5QrcodeScanner("mini-reader", config, false);
+            barcodeScannerRef.current = scanner;
+            scanner.render(onScanSuccess, () => {});
+        }, 100);
+
+        return () => {
+            clearTimeout(timeout);
+            if (barcodeScannerRef.current) {
+                try { barcodeScannerRef.current.clear(); } catch(e){}
+                barcodeScannerRef.current = null;
+            }
+        };
+    }
+  }, [activeBarcodeIndex]);
+
+  const handleBarcodeDetected = async (index: number, barcode: string) => {
+      if (!parsedData || !parsedData.items) return;
+      
+      const newItems = [...parsedData.items];
+      
+      // 1. Check if we know this barcode
+      const existingProduct = await getProductByBarcode(barcode);
+      
+      let updatedItem = { ...newItems[index], barcode: barcode };
+      
+      if (existingProduct) {
+          // Auto-fill name if recognized!
+          updatedItem.name = existingProduct.name;
+          if (existingProduct.category) updatedItem.category = existingProduct.category;
+          alert(`Product identified: ${existingProduct.name}`);
+      }
+
+      newItems[index] = updatedItem;
+      setParsedData({ ...parsedData, items: newItems });
+  };
 
   const processImage = async (blob: Blob) => {
     setStep('processing');
@@ -87,6 +148,24 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang, catego
     setParsedData({ ...parsedData, items: newItems });
   };
 
+  // NEW: Handle changing the "Total Price" of a line item directly
+  // This reverse calculates the unit price. 
+  // Useful for "2 for $5" -> User enters Qty: 2, Total: 5. System sets Unit: 2.50.
+  const handleLineTotalChange = (index: number, newTotalString: string) => {
+    if (!parsedData || !parsedData.items) return;
+    const newTotal = parseFloat(newTotalString);
+    if (isNaN(newTotal)) return;
+
+    const newItems = [...parsedData.items];
+    const qty = newItems[index].quantity || 1;
+    
+    // Reverse Calculate Unit Price
+    const newUnitPrice = newTotal / qty;
+    
+    newItems[index] = { ...newItems[index], price: parseFloat(newUnitPrice.toFixed(3)) }; // Keep 3 decimals for precision during edit
+    setParsedData({ ...parsedData, items: newItems });
+  };
+
   const addItem = () => {
     if (!parsedData) return;
     const newItem: ProductItem = {
@@ -105,25 +184,20 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang, catego
   };
 
   const handleSave = async () => {
-    // 1. Prevent Double Clicks
-    if (isSaving) {
-        console.warn("Save already in progress...");
-        return;
-    }
+    if (isSaving) return;
 
-    console.log("handleSave triggered");
     setErrorMsg(null);
     setIsSaving(true);
 
     try {
       if (!parsedData) throw new Error("No data to save");
 
-      // 2. Data Sanitization
       const safeItems = (parsedData.items || []).map(item => ({
         ...item,
         name: item.name || 'Unknown Item',
         price: parseFloat(String(item.price)) || 0,
-        quantity: parseInt(String(item.quantity)) || 1
+        quantity: parseInt(String(item.quantity)) || 1,
+        barcode: item.barcode // Persist barcode
       }));
 
       const calculatedTotal = calculateTotal(safeItems);
@@ -138,16 +212,11 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang, catego
         rawText: parsedData.rawText
       };
 
-      console.log("Sending receipt to App...", finalReceipt);
-      
-      // 3. Call Parent Handler (which calls DB)
       await onSave(finalReceipt);
-      
       alert("✅ Receipt Saved Successfully!");
 
     } catch (err: any) {
       console.error("Scanner Save Error:", err);
-      // 4. User Feedback
       alert(`⚠️ ${err.message}`);
       setErrorMsg(err.message);
     } finally {
@@ -175,7 +244,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang, catego
 
   if (step === 'review' && parsedData) {
     return (
-      <div className="p-4 pb-32 max-w-2xl mx-auto">
+      <div className="p-4 pb-32 max-w-2xl mx-auto relative">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">{t.review}</h2>
           <button onClick={onCancel} className="bg-gray-200 text-gray-600 p-2 rounded-full hover:bg-gray-300 transition-colors"><X size={20} /></button>
@@ -214,27 +283,48 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang, catego
           <div>
             <div className="flex justify-between items-end mb-3 px-1">
                 <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">{t.items}</label>
-                <span className="text-xs text-gray-400 font-mono">QTY | PRICE</span>
+                <span className="text-xs text-gray-400 font-mono flex gap-8">
+                   <span>QTY</span>
+                   <span>UNIT $</span>
+                   <span>TOTAL</span>
+                </span>
             </div>
             
             <div className="space-y-3">
               {parsedData.items?.map((item, idx) => (
                 <div key={item.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-gray-300 transition-all">
                    <div className="flex justify-between items-start gap-2 mb-2">
-                      <input 
-                        placeholder="Item name"
-                        className="flex-1 bg-transparent border-b border-transparent focus:border-primary outline-none text-sm font-medium text-gray-800"
-                        value={item.name}
-                        onChange={(e) => updateItem(idx, 'name', e.target.value)}
-                      />
-                      <button onClick={() => removeItem(idx)} className="text-gray-400 hover:text-red-500 transition-colors">
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="flex-1">
+                        <input 
+                            placeholder="Item name"
+                            className="w-full bg-transparent border-b border-transparent focus:border-primary outline-none text-sm font-medium text-gray-800"
+                            value={item.name}
+                            onChange={(e) => updateItem(idx, 'name', e.target.value)}
+                        />
+                        {item.barcode && (
+                            <div className="text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded w-fit mt-1 flex items-center gap-1">
+                                <ScanBarcode size={10} /> {item.barcode}
+                            </div>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                         <button 
+                            onClick={() => setActiveBarcodeIndex(idx)} 
+                            className={`p-1.5 rounded-lg transition-colors ${item.barcode ? 'text-primary bg-green-100' : 'text-gray-400 hover:text-gray-600 bg-gray-100'}`}
+                            title="Scan Barcode to Link"
+                         >
+                            <ScanBarcode size={16} />
+                         </button>
+                         <button onClick={() => removeItem(idx)} className="text-gray-400 hover:text-red-500 transition-colors p-1.5">
+                            <Trash2 size={16} />
+                         </button>
+                      </div>
                    </div>
                    
                    <div className="flex items-center gap-2">
+                       {/* Category Select */}
                        <select 
-                          className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 outline-none focus:border-primary"
+                          className="flex-[2] bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 outline-none focus:border-primary"
                           value={item.category || ''}
                           onChange={(e) => updateItem(idx, 'category', e.target.value)}
                        >
@@ -244,24 +334,42 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang, catego
                           ))}
                        </select>
 
+                      {/* Quantity Input */}
                       <input 
                           type="number"
                           min="1"
-                          className="w-14 bg-white border border-gray-200 rounded-lg py-1.5 text-center text-sm font-bold outline-none focus:border-primary"
+                          className="w-12 bg-white border border-gray-200 rounded-lg py-1.5 text-center text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                           value={item.quantity}
                           onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                          title="Quantity"
                       />
 
-                      <div className="relative w-24">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                      {/* Unit Price Input */}
+                      <div className="relative w-20">
+                        <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">$</span>
                         <input 
                           type="number"
                           step="0.01"
-                          className="w-full bg-white border border-gray-200 rounded-lg pl-5 pr-2 py-1.5 text-right text-sm font-bold outline-none focus:border-primary"
+                          className="w-full bg-white border border-gray-200 rounded-lg pl-3 pr-1 py-1.5 text-right text-sm font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                           value={item.price}
                           onChange={(e) => updateItem(idx, 'price', e.target.value)}
+                          title="Unit Price"
                         />
                       </div>
+
+                      {/* Total Price Input (Calculated, but editable to reverse-calculate unit price) */}
+                      <div className="relative w-20">
+                          <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">=</span>
+                          <input 
+                            type="number"
+                            step="0.01"
+                            className="w-full bg-blue-50/50 border border-blue-100 rounded-lg pl-3 pr-1 py-1.5 text-right text-sm font-bold text-blue-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            value={(item.price * item.quantity).toFixed(2)}
+                            onChange={(e) => handleLineTotalChange(idx, e.target.value)}
+                            title="Line Total (Edit to calculate unit price)"
+                          />
+                      </div>
+
                    </div>
                 </div>
               ))}
@@ -281,7 +389,8 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang, catego
           </div>
         </div>
 
-        <div className="fixed bottom-6 left-4 right-4 max-w-2xl mx-auto flex gap-3 z-50">
+        {/* Action Buttons */}
+        <div className="fixed bottom-6 left-4 right-4 max-w-2xl mx-auto flex gap-3 z-40">
           <button 
             onClick={() => setStep('capture')} 
             className="flex-1 bg-white border border-gray-200 text-gray-700 py-4 rounded-xl font-bold shadow-lg hover:bg-gray-50 active:scale-95 transition-all"
@@ -302,6 +411,22 @@ export const Scanner: React.FC<ScannerProps> = ({ onSave, onCancel, lang, catego
             )}
           </button>
         </div>
+
+        {/* --- MINI SCANNER MODAL --- */}
+        {activeBarcodeIndex !== null && (
+            <div className="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center p-4">
+                <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden p-4">
+                    <h3 className="text-center font-bold text-gray-800 mb-2">Scan Product Barcode</h3>
+                    <div id="mini-reader" className="w-full h-64 bg-gray-100 rounded-lg overflow-hidden"></div>
+                    <button 
+                        onClick={() => setActiveBarcodeIndex(null)}
+                        className="mt-4 w-full bg-red-100 text-red-600 font-bold py-2 rounded-lg"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        )}
       </div>
     );
   }

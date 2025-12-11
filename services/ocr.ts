@@ -36,7 +36,6 @@ const preprocessImage = (imageBlob: Blob): Promise<string> => {
       }
 
       // 1. Scale image up to help with small receipt fonts
-      // A width of ~2500px is usually a good balance for Tesseract performance/accuracy
       const scaleFactor = Math.min(2.5, 2500 / Math.max(img.width, img.height)); 
       canvas.width = img.width * scaleFactor;
       canvas.height = img.height * scaleFactor;
@@ -48,16 +47,11 @@ const preprocessImage = (imageBlob: Blob): Promise<string> => {
       const data = imageData.data;
 
       // 2. High-Contrast Binarization
-      // We iterate through pixels and make them either white or black to remove background noise
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
-        
-        // Luminance formula
         const gray = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        
-        // Dynamic thresholding could be better, but a fixed threshold of ~150 works for standard thermal paper
         const val = gray > 140 ? 255 : 0; 
 
         data[i] = val;
@@ -94,7 +88,6 @@ const extractDate = (lines: string[]): string => {
     for (const pattern of datePatterns) {
       const match = line.match(pattern);
       if (match) {
-          // Attempt to standardize date
           try {
               const d = new Date(match[0]);
               if (!isNaN(d.getTime())) {
@@ -110,7 +103,6 @@ const extractDate = (lines: string[]): string => {
 
 const extractTotal = (lines: string[]): number => {
   const totalKeywords = ['total', 'balance', 'amount due', 'final', 'grand total', 'subtotal'];
-  // Regex to find price at end of line
   const priceRegex = /(\d{1,3}(?:,\d{3})*\.\d{2})/;
   
   let maxVal = 0;
@@ -122,15 +114,10 @@ const extractTotal = (lines: string[]): number => {
 
     if (match) {
       const val = parseFloat(match[1].replace(/,/g, ''));
-      
-      // If we see "Total" or "Balance", this is likely the one
       if (totalKeywords.some(k => line.includes(k))) {
-        // If we previously found a 'subtotal' that was smaller, keep looking? 
-        // Usually the biggest number near 'Total' is correct.
         if (val > maxVal) maxVal = val;
         foundTotalKeyword = true;
       } else if (!foundTotalKeyword) {
-          // Keep track of largest number seen just in case we miss the keyword
           if (val > maxVal) maxVal = val;
       }
     }
@@ -139,17 +126,13 @@ const extractTotal = (lines: string[]): number => {
 };
 
 const isLineNoisy = (line: string): boolean => {
-    // Count non-alphanumeric characters
     const nonAlpha = line.replace(/[a-zA-Z0-9\s]/g, '').length;
     const len = line.length;
-    // If more than 30% symbols, it's noise (e.g. "§$%&/()")
     return (nonAlpha / len) > 0.3;
 };
 
 const extractStore = (lines: string[]): string => {
-  const upperLines = lines.slice(0, 15); // Look at top 15 lines
-  
-  // 1. Check against dictionary
+  const upperLines = lines.slice(0, 15);
   for (const line of upperLines) {
       const normalized = line.toUpperCase().replace(/[^A-Z]/g, ''); 
       for (const store of KNOWN_STORES) {
@@ -160,7 +143,6 @@ const extractStore = (lines: string[]): string => {
       }
   }
 
-  // 2. Fallback: Find a clean, prominent line
   const skipPatterns = [
       /^\d+/, /phone|tel|fax/i, /www\.|http|\.com/i, /welcome/i, 
       /receipt/i, /gst|hst/i, /term|auth|card/i, /street|road|ave|blvd/i
@@ -168,19 +150,16 @@ const extractStore = (lines: string[]): string => {
   
   for (let i = 0; i < Math.min(8, lines.length); i++) {
     const line = lines[i];
-    // Skip short lines, noisy lines, or lines matching skip patterns
     if (line.length > 3 && !isLineNoisy(line) && !skipPatterns.some(p => p.test(line.toLowerCase()))) {
-        // Return Title Case
         return line.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
     }
   }
-  return "Unknown Store"; // Better to default to Unknown than return garbage
+  return "Unknown Store";
 };
 
 const extractItems = (lines: string[]): ProductItem[] => {
   const items: ProductItem[] = [];
   
-  // Keywords that definitely signal a footer line (not a product)
   const FOOTER_KEYWORDS = [
       'TOTAL', 'SUBTOTAL', 'TAX', 'HST', 'GST', 'PST', 'BALANCE', 
       'VISA', 'DEBIT', 'MASTERCARD', 'AUTH', 'CHANGE', 'DUE', 'CASH', 
@@ -188,11 +167,13 @@ const extractItems = (lines: string[]): ProductItem[] => {
   ];
   
   // Regex: Name ... Price
-  // Groups: 1=Name, 2=Price
   const lineItemRegex = /^(.*?)\s+(\d{1,4}[.,]\d{2})\s*([A-Z]{1,2})?$/i;
   
-  // Quantity check: "2 @ 1.99"
+  // Standard Quantity: "2 @ 1.99" or "2 x 1.99"
   const quantityRegex = /^(\d+)\s*[@x]\s*(\d+[.,]\d{2})/i;
+
+  // Split Pricing / Deals: "2/5.00", "2 / 5.00", "2 FOR 5.00"
+  const multiBuyRegex = /^(\d+)\s*(?:\/|for|FOR)\s*\$?(\d+[.,]\d{2})/i;
   
   let buffer: string[] = []; 
 
@@ -203,17 +184,34 @@ const extractItems = (lines: string[]): ProductItem[] => {
     const lowerLine = line.toLowerCase();
     const upperLine = line.toUpperCase();
 
-    // 1. Strict Footer Check
-    // If line contains 'TOTAL' or 'SUBTOTAL', ignore it entirely
-    if (FOOTER_KEYWORDS.some(k => upperLine.includes(k))) {
-        continue;
-    }
-    
-    // Skip obvious header/noise info
+    // 1. Footer Check
+    if (FOOTER_KEYWORDS.some(k => upperLine.includes(k))) continue;
     if (line.match(/welcome|receipt|store|phone|cashier|transaction|customer/i)) continue;
-    if (/\d{4}[-./]\d{2}[-./]\d{2}/.test(line)) continue; // Date line
+    if (/\d{4}[-./]\d{2}[-./]\d{2}/.test(line)) continue; 
 
-    // --- Try to match Item Line ---
+    // --- CHECK FOR DEAL MODIFIER FIRST (Modifies previous item) ---
+    // Example: Previous line "Cookies", This line "2/5.00"
+    const dealMatch = line.match(multiBuyRegex);
+    if (dealMatch && items.length > 0) {
+        const qty = parseInt(dealMatch[1], 10);
+        const dealTotal = parseFloat(dealMatch[2].replace(',', '.'));
+        
+        if (qty > 0 && dealTotal > 0) {
+            // Update the LAST item added
+            const lastItem = items[items.length - 1];
+            
+            // Calculate true unit price
+            const unitPrice = dealTotal / qty;
+            
+            lastItem.quantity = qty;
+            lastItem.price = parseFloat(unitPrice.toFixed(2));
+            
+            // If the last item was just a name without a price (from buffer), this confirms it
+            continue; 
+        }
+    }
+
+    // --- Try to match Standard Item Line ---
     const match = line.match(lineItemRegex);
     
     if (match) {
@@ -222,41 +220,40 @@ const extractItems = (lines: string[]): ProductItem[] => {
       let price = parseFloat(priceStr);
       let quantity = 1;
 
-      // Filter out weird prices
       if (price > 900 || price === 0) continue; 
       
-      // Filter out names that look like SKU codes or Garbage
-      // Remove leading digits/SKUs: "4011 Bananas" -> "Bananas"
       name = name.replace(/^[\d\s-]{3,}/, '');
-      // Remove noisy leading symbols: "\ MEAT" -> "MEAT"
       name = name.replace(/^[^a-zA-Z0-9]+/, '');
 
-      // If name became empty or is just numbers, skip
       if (name.length < 2 || /^\d+$/.test(name)) continue;
 
-      // Check buffer for Quantity context
+      // Check buffer for Quantity context (Standard 2 @ 1.99)
       if (buffer.length > 0) {
         const lastLine = buffer[buffer.length - 1];
         const qtyMatch = lastLine.match(quantityRegex);
         
         if (qtyMatch) {
             quantity = parseInt(qtyMatch[1], 10);
+            // In "2 @ 1.99", the 1.99 is usually the UNIT price, so we leave price as is (if match found line price)
+            // But usually the line price (match[2]) is the TOTAL (3.98).
+            // Let's ensure consistency. 
+            // If line says 3.98, and buffer says 2 @ 1.99.
+            // We trust the buffer's unit price usually, OR we verify math. 
+            // Simplified: Trust the unit price from the buffer if distinct.
+            const unitPriceFromBuffer = parseFloat(qtyMatch[2].replace(',', '.'));
+            if (unitPriceFromBuffer > 0) price = unitPriceFromBuffer;
         } else if (lastLine.length > 3 && !/^\d+$/.test(lastLine) && !isLineNoisy(lastLine)) {
-            // Likely a multi-line name
-            // "PRESIDENTS CHOICE"
-            // "COOKIES 2.99"
             name = `${lastLine} ${name}`;
         }
       }
 
       items.push({ id: generateId(), name, price, quantity });
-      buffer = []; // Clear buffer
+      buffer = []; 
     } else {
-        // Line didn't match price pattern. Add to buffer for context.
         if (!isLineNoisy(line)) {
             buffer.push(line);
         }
-        if (buffer.length > 2) buffer.shift(); // Keep buffer small
+        if (buffer.length > 2) buffer.shift();
     }
   }
 
@@ -264,10 +261,8 @@ const extractItems = (lines: string[]): ProductItem[] => {
 };
 
 export const processReceiptWithOCR = async (imageBlob: Blob): Promise<ParsedReceipt> => {
-  // 1. Preprocess
   const preprocessedImage = await preprocessImage(imageBlob);
   
-  // 2. Initialize Tesseract with AUTO page segmentation for better layout handling
   const worker = await Tesseract.createWorker('eng'); 
   await worker.setParameters({
     tessedit_pageseg_mode: Tesseract.PSM.AUTO, 
@@ -279,13 +274,11 @@ export const processReceiptWithOCR = async (imageBlob: Blob): Promise<ParsedRece
   const rawText = result.data.text;
   const lines = cleanText(rawText);
 
-  // 3. Extract Data
   const storeName = extractStore(lines);
   const date = extractDate(lines);
   const total = extractTotal(lines);
   const items = extractItems(lines);
 
-  // Fallback: If no items found, provide an empty row
   if (items.length === 0) {
       items.push({ id: generateId(), name: "", price: 0, quantity: 1 });
   }

@@ -386,7 +386,15 @@ function App() {
       case ViewState.PRICE_CHECK:
         return <PriceCheck lang={lang} />;
       case ViewState.HISTORY:
-        return <History receipts={receipts} onDelete={handleDeleteReceipt} lang={lang} />;
+        return (
+          <History 
+            receipts={receipts} 
+            onDelete={handleDeleteReceipt} 
+            onUpdate={async (r) => { await saveReceipt(r); await loadData(); }}
+            lang={lang} 
+            categories={categories}
+          />
+        );
       case ViewState.SHOPPING_LIST:
         return <ShoppingList lang={lang} />;
       case ViewState.SETTINGS:

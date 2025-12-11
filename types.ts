@@ -5,6 +5,7 @@ export interface ProductItem {
   price: number;
   quantity: number;
   category?: string;
+  barcode?: string;
 }
 
 export interface Receipt {
