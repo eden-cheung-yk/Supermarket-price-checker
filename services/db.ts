@@ -161,7 +161,7 @@ export const getProductByBarcode = async (barcode: string): Promise<{name: strin
     .from('receipts')
     .select('items, date')
     .order('date', { ascending: false })
-    .limit(50); // Search last 50 receipts
+    .limit(200); // Search last 200 receipts to increase hit rate for historical items
 
   if (!receipts) return null;
 

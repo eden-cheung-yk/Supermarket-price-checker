@@ -145,6 +145,22 @@ export const History: React.FC<HistoryProps> = ({ receipts, onDelete, onUpdate, 
       setEditingReceipt({ ...editingReceipt, items: newItems });
   };
 
+  // NEW: Reverse Calc Logic (Same as Scanner.tsx)
+  const handleLineTotalChange = (index: number, newTotalString: string) => {
+    if (!editingReceipt) return;
+    const newTotal = parseFloat(newTotalString);
+    if (isNaN(newTotal)) return;
+
+    const newItems = [...editingReceipt.items];
+    const qty = newItems[index].quantity || 1;
+    
+    // Reverse Calculate Unit Price
+    const newUnitPrice = newTotal / qty;
+    
+    newItems[index] = { ...newItems[index], price: parseFloat(newUnitPrice.toFixed(3)) }; 
+    setEditingReceipt({ ...editingReceipt, items: newItems });
+  };
+
   const removeEditItem = (index: number) => {
       if (!editingReceipt) return;
       const newItems = editingReceipt.items.filter((_, i) => i !== index);
@@ -308,14 +324,15 @@ export const History: React.FC<HistoryProps> = ({ receipts, onDelete, onUpdate, 
                       <div>
                           <div className="flex justify-between items-end mb-2 border-b border-gray-100 pb-2">
                               <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Items</label>
-                              <div className="text-xs font-bold text-gray-400 uppercase tracking-wider flex gap-4 pr-10">
+                              <div className="text-xs font-bold text-gray-400 uppercase tracking-wider flex gap-8 pr-4">
                                   <span className="w-12 text-center">Qty</span>
-                                  <span className="w-20 text-right">Price</span>
+                                  <span className="w-20 text-right">Unit $</span>
+                                  <span className="w-20 text-right">Total</span>
                               </div>
                           </div>
                           <div className="space-y-2">
                               {editingReceipt.items.map((item, idx) => (
-                                  <div key={idx} className="flex gap-2 items-center">
+                                  <div key={idx} className="flex gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-100">
                                       <div className="flex-1 space-y-1">
                                           <input 
                                               className="w-full text-sm font-medium border border-gray-200 rounded px-2 py-1 focus:border-blue-500 outline-none"
@@ -328,27 +345,28 @@ export const History: React.FC<HistoryProps> = ({ receipts, onDelete, onUpdate, 
                                                     <ScanBarcode size={10} /> {item.barcode}
                                                 </div>
                                             )}
-                                          <select
-                                              className="w-full text-xs text-gray-500 border border-gray-200 rounded px-2 py-1 outline-none bg-gray-50"
-                                              value={item.category || ''}
-                                              onChange={(e) => updateEditItem(idx, 'category', e.target.value)}
-                                          >
-                                              <option value="">Uncategorized</option>
-                                              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                                          </select>
+                                          <div className="flex gap-1">
+                                              <select
+                                                  className="flex-1 text-xs text-gray-500 border border-gray-200 rounded px-2 py-1 outline-none bg-white"
+                                                  value={item.category || ''}
+                                                  onChange={(e) => updateEditItem(idx, 'category', e.target.value)}
+                                              >
+                                                  <option value="">Uncategorized</option>
+                                                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                              </select>
+                                              <button 
+                                                onClick={() => setActiveBarcodeIndex(idx)}
+                                                className={`p-1 rounded ${item.barcode ? 'text-primary bg-green-100' : 'text-gray-400 bg-gray-200'}`}
+                                                title="Scan Barcode"
+                                              >
+                                                  <ScanBarcode size={14}/>
+                                              </button>
+                                          </div>
                                       </div>
                                       
-                                      <button 
-                                        onClick={() => setActiveBarcodeIndex(idx)}
-                                        className={`p-2 rounded-lg ${item.barcode ? 'text-primary bg-green-50' : 'text-gray-400 bg-gray-50'}`}
-                                        title="Scan Barcode"
-                                      >
-                                          <ScanBarcode size={18}/>
-                                      </button>
-
                                       <input 
                                           type="number"
-                                          className="w-12 text-center text-sm font-bold border border-gray-200 rounded py-1 outline-none"
+                                          className="w-12 text-center text-sm font-bold border border-gray-200 rounded py-1 outline-none bg-white"
                                           value={item.quantity}
                                           onChange={(e) => updateEditItem(idx, 'quantity', e.target.value)}
                                       />
@@ -356,9 +374,19 @@ export const History: React.FC<HistoryProps> = ({ receipts, onDelete, onUpdate, 
                                       <input 
                                           type="number"
                                           step="0.01"
-                                          className="w-20 text-right text-sm font-bold border border-gray-200 rounded py-1 outline-none"
+                                          className="w-20 text-right text-sm font-bold border border-gray-200 rounded py-1 outline-none bg-white"
                                           value={item.price}
                                           onChange={(e) => updateEditItem(idx, 'price', e.target.value)}
+                                      />
+
+                                      {/* New Total Field */}
+                                      <input 
+                                          type="number"
+                                          step="0.01"
+                                          className="w-20 text-right text-sm font-bold border border-blue-100 bg-blue-50 rounded py-1 outline-none text-blue-600"
+                                          value={(item.price * item.quantity).toFixed(2)}
+                                          onChange={(e) => handleLineTotalChange(idx, e.target.value)}
+                                          title="Line Total (Edit to calc unit price)"
                                       />
 
                                       <button 

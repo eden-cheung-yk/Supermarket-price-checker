@@ -1,3 +1,4 @@
+
 # SmartPrice Tracker (Supabase + Vercel)
 
 This application is a grocery price tracker and shopping list that syncs to the cloud using Supabase.
@@ -51,6 +52,22 @@ create policy "Public Access List" on shopping_list for all using (true) with ch
 ```
 
 4.  Click **Run** (bottom right). You should see "Success".
+
+### 📋 JSON Data Structure (`items`)
+
+The `items` column in the `receipts` table stores an array of product objects. This flexible structure allows us to add fields like `barcode` without changing the SQL schema.
+
+**Structure of a single item object:**
+```json
+{
+  "id": "string (uuid)",
+  "name": "string",
+  "price": number,       // Unit price
+  "quantity": number,
+  "category": "string",  // Optional
+  "barcode": "string"    // Optional (Used for product syncing)
+}
+```
 
 ### 3. Get API Keys
 1.  Go to **Project Settings** (Cog icon at the bottom of the sidebar).

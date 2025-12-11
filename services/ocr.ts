@@ -172,9 +172,13 @@ const extractItems = (lines: string[]): ProductItem[] => {
   // Standard Quantity: "2 @ 1.99" or "2 x 1.99"
   const quantityRegex = /^(\d+)\s*[@x]\s*(\d+[.,]\d{2})/i;
 
-  // Split Pricing / Deals: "2/5.00", "2 / 5.00", "2 FOR 5.00"
+  // Split Pricing / Deals on NEXT line: "2/5.00", "2 / 5.00", "2 FOR 5.00"
   const multiBuyRegex = /^(\d+)\s*(?:\/|for|FOR)\s*\$?(\d+[.,]\d{2})/i;
   
+  // Inline Deal: "Gatorade 2/5.00" or "Chips 2 FOR 6.00" on the SAME line
+  // Captures Name, Qty, Total
+  const inlineDealRegex = /^(.*?)\s+(\d+)\s*(?:\/|for|FOR)\s*\$?(\d+[.,]\d{2})\s*([A-Z]{1,2})?$/i;
+
   let buffer: string[] = []; 
 
   for (let i = 0; i < lines.length; i++) {
@@ -205,9 +209,28 @@ const extractItems = (lines: string[]): ProductItem[] => {
             
             lastItem.quantity = qty;
             lastItem.price = parseFloat(unitPrice.toFixed(2));
-            
-            // If the last item was just a name without a price (from buffer), this confirms it
             continue; 
+        }
+    }
+
+    // --- CHECK FOR INLINE DEAL ---
+    // Example: "Gatorade 2/5.00"
+    const inlineMatch = line.match(inlineDealRegex);
+    if (inlineMatch) {
+        const name = inlineMatch[1].trim();
+        const qty = parseInt(inlineMatch[2], 10);
+        const dealTotal = parseFloat(inlineMatch[3].replace(',', '.'));
+        
+        if (qty > 0 && dealTotal > 0) {
+            const unitPrice = dealTotal / qty;
+            items.push({
+                id: generateId(),
+                name: name.replace(/^[\d\s-]{3,}/, ''), // Clean leading numbers
+                quantity: qty,
+                price: parseFloat(unitPrice.toFixed(2))
+            });
+            buffer = [];
+            continue;
         }
     }
 
@@ -234,12 +257,6 @@ const extractItems = (lines: string[]): ProductItem[] => {
         
         if (qtyMatch) {
             quantity = parseInt(qtyMatch[1], 10);
-            // In "2 @ 1.99", the 1.99 is usually the UNIT price, so we leave price as is (if match found line price)
-            // But usually the line price (match[2]) is the TOTAL (3.98).
-            // Let's ensure consistency. 
-            // If line says 3.98, and buffer says 2 @ 1.99.
-            // We trust the buffer's unit price usually, OR we verify math. 
-            // Simplified: Trust the unit price from the buffer if distinct.
             const unitPriceFromBuffer = parseFloat(qtyMatch[2].replace(',', '.'));
             if (unitPriceFromBuffer > 0) price = unitPriceFromBuffer;
         } else if (lastLine.length > 3 && !/^\d+$/.test(lastLine) && !isLineNoisy(lastLine)) {
